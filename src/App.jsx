@@ -4,11 +4,13 @@ import WebcamFeed from "./components/WebcamFeed";
 import { useHandDetection } from "./hooks/useHandDetection";
 import { useWordBuilder } from "./hooks/useWordBuilder";
 import { useKeyboardDemo } from "./hooks/useKeyboardDemo";
+import HowToUseModal from "./components/HowToUseModal";
 
 function App() {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const [cameraError, setCameraError] = useState(null);
+  const [isHowToUseOpen, setIsHowToUseOpen] = useState(false);
 
   const { isModelLoading, handDetected, detectedLetter, error: modelError } = useHandDetection(webcamRef, canvasRef);
   const { keyboardLetter, keyboardDemoActive } = useKeyboardDemo();
@@ -48,10 +50,17 @@ function App() {
             </h1>
             <p className="text-sm text-gray-400 mt-1">Real-Time Sign Language Interpreter</p>
           </div>
-          
-          <div className="flex items-center gap-3 bg-gray-950 px-4 py-2 rounded-full border border-gray-800 shadow-inner">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Model Status</span>
-            {isModelLoading ? (
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsHowToUseOpen(true)}
+              className="text-sm font-medium text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg border border-gray-700 transition-colors"
+            >
+              How to Use
+            </button>
+
+            <div className="flex items-center gap-3 bg-gray-950 px-4 py-2 rounded-full border border-gray-800 shadow-inner">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Model Status</span>
+              {isModelLoading ? (
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2.5 w-2.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
@@ -65,6 +74,7 @@ function App() {
                 <span className="text-sm text-green-400 font-medium">Ready</span>
               </div>
             )}
+          </div>
           </div>
         </div>
       </header>
@@ -274,6 +284,8 @@ function App() {
         </div>
 
       </div>
+
+      <HowToUseModal isOpen={isHowToUseOpen} onClose={() => setIsHowToUseOpen(false)} />
     </main>
   );
 }
