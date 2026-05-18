@@ -94,19 +94,9 @@ function App() {
           {/* Left Column: Webcam Card */}
           <section className="w-full lg:w-[680px] flex flex-col gap-4">
             <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 shadow-xl flex flex-col items-center">
-              <div className="w-full max-w-[640px] rounded-xl overflow-hidden bg-black border border-gray-800 shadow-inner">
-                <WebcamFeed 
-                  webcamRef={webcamRef} 
-                  canvasRef={canvasRef} 
-                  onMediaError={(err) => {
-                    console.error("Webcam error:", err);
-                    setCameraError("Camera access is required for real-time sign detection. Please allow webcam permission and reload the page.");
-                  }} 
-                />
-              </div>
               
               {/* Hand Detection Status */}
-              <div className="w-full mt-4 flex items-center justify-between px-2">
+              <div className="w-full mb-4 flex items-center justify-between px-2">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-400">Hand Tracking:</span>
                   {handDetected ? (
@@ -121,6 +111,17 @@ function App() {
                     Keyboard Demo Active
                   </span>
                 )}
+              </div>
+
+              <div className="w-full max-w-[640px] rounded-xl overflow-hidden bg-black border border-gray-800 shadow-inner">
+                <WebcamFeed 
+                  webcamRef={webcamRef} 
+                  canvasRef={canvasRef} 
+                  onMediaError={(err) => {
+                    console.error("Webcam error:", err);
+                    setCameraError("Camera access is required for real-time sign detection. Please allow webcam permission and reload the page.");
+                  }} 
+                />
               </div>
             </div>
             
@@ -140,26 +141,39 @@ function App() {
               {/* Decorative background glow */}
               <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
 
-              <h2 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-                <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                Active Recognition
-              </h2>
-
-              {/* Huge Letter Display */}
-              <div className="relative mb-8">
-                <div className="flex items-center justify-center h-48 bg-gray-950 rounded-xl border border-gray-800 shadow-inner relative overflow-hidden group">
-                  <span className={`text-9xl font-bold transition-all duration-200 z-10 ${activeDetectedLetter ? "text-white scale-110 drop-shadow-[0_0_20px_rgba(99,102,241,0.4)]" : "text-gray-800 scale-100"}`}>
-                    {activeDetectedLetter || "-"}
-                  </span>
-                  
-                  {/* Progress Bar inside letter display */}
-                  <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-900">
-                    <div 
-                      className="h-full bg-indigo-500 transition-all duration-100 ease-linear shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-                      style={{ width: `${progress}%` }}
-                    />
+              {/* Top Row: Active Recognition & Current Word (50% each) */}
+              <div className="flex flex-col md:flex-row gap-4 mb-2">
+                
+                {/* Active Recognition */}
+                <div className="flex-1 flex flex-col">
+                  <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Active Recognition
+                  </h2>
+                  <div className="flex items-center justify-center h-32 bg-gray-950 rounded-xl border border-gray-800 shadow-inner relative overflow-hidden group">
+                    <span className={`text-7xl font-bold transition-all duration-200 z-10 ${activeDetectedLetter ? "text-white scale-110 drop-shadow-[0_0_20px_rgba(99,102,241,0.4)]" : "text-gray-800 scale-100"}`}>
+                      {activeDetectedLetter || "-"}
+                    </span>
+                    <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-900">
+                      <div 
+                        className="h-full bg-indigo-500 transition-all duration-100 ease-linear shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
+
+                {/* Current Word */}
+                <div className="flex-1 flex flex-col">
+                  <h2 className="text-lg font-semibold text-transparent mb-2 select-none md:block hidden">-</h2>
+                  <div className="flex-1 bg-black/50 p-4 rounded-xl border border-gray-800/80 flex flex-col justify-center min-h-[8rem]">
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Current Word</h3>
+                    <p className="text-3xl font-mono text-white tracking-widest break-all">
+                      {currentWord || <span className="text-gray-700 animate-pulse">_</span>}
+                    </p>
+                  </div>
+                </div>
+                
               </div>
 
               {/* Gesture History */}
@@ -175,23 +189,12 @@ function App() {
                 )}
               </div>
 
-              {/* Word & Sentence Terminals */}
-              <div className="flex-1 flex flex-col gap-4">
-                <div className="bg-black/50 p-4 rounded-xl border border-gray-800/80">
-                  <div className="flex justify-between items-end mb-2">
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Current Word</h3>
-                  </div>
-                  <p className="text-3xl font-mono text-white min-h-[40px] tracking-widest break-all">
-                    {currentWord || <span className="text-gray-700 animate-pulse">_</span>}
-                  </p>
-                </div>
-
-                <div className="bg-black/50 p-4 rounded-xl border border-gray-800/80 flex-1">
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Full Sentence</h3>
-                  <p className="text-2xl font-mono text-indigo-300 min-h-[80px] leading-relaxed break-all">
-                    {fullSentence || <span className="text-gray-700 italic">Start signing to build a sentence...</span>}
-                  </p>
-                </div>
+              {/* Full Sentence Terminal */}
+              <div className="bg-black/50 p-4 rounded-xl border border-gray-800/80 flex-1 flex flex-col">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Full Sentence</h3>
+                <p className="text-2xl font-mono text-indigo-300 flex-1 leading-relaxed break-all">
+                  {fullSentence || <span className="text-gray-700 italic">Start signing to build a sentence...</span>}
+                </p>
               </div>
 
               {/* Action Buttons */}
