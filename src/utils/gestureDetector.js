@@ -5,23 +5,37 @@ import { gestureDescriptions } from "./gestureDescriptions";
 const estimator = new fp.GestureEstimator(gestureDescriptions);
 
 const getDistance = (pointA, pointB) => {
+  if (!pointA || !pointB) return Infinity;
+  // 2D Euclidean distance using x and y
   return Math.sqrt(
     Math.pow(pointA[0] - pointB[0], 2) +
-    Math.pow(pointA[1] - pointB[1], 2) +
-    Math.pow(pointA[2] - pointB[2], 2)
+    Math.pow(pointA[1] - pointB[1], 2)
   );
 };
 
-const isOLikeShape = (landmarks) => {
+const getNormalizedThumbIndexGap = (landmarks) => {
+  if (!landmarks || !landmarks[4] || !landmarks[8] || !landmarks[0] || !landmarks[9]) {
+    return Infinity;
+  }
   const thumbTip = landmarks[4];
   const indexTip = landmarks[8];
   const wrist = landmarks[0];
   const middleMCP = landmarks[9];
 
-  const referenceDistance = getDistance(wrist, middleMCP);
-  const pinchDistance = getDistance(thumbTip, indexTip);
+  const thumbIndexDistance = getDistance(thumbTip, indexTip);
+  const handSize = getDistance(wrist, middleMCP);
   
-  return (pinchDistance / referenceDistance) < 0.8;
+  if (handSize === 0 || handSize === Infinity) return Infinity;
+  
+  return thumbIndexDistance / handSize;
+};
+
+const isClosedOShape = (landmarks) => {
+  return getNormalizedThumbIndexGap(landmarks) <= 0.65;
+};
+
+const isOpenCShape = (landmarks) => {
+  return getNormalizedThumbIndexGap(landmarks) >= 0.75;
 };
 
 export const detectGesture = (predictions) => {
@@ -40,20 +54,35 @@ export const detectGesture = (predictions) => {
 
     if (estimatedGestures && estimatedGestures.gestures && estimatedGestures.gestures.length > 0) {
       const sortedGestures = estimatedGestures.gestures.sort((a, b) => b.score - a.score);
-      let highestConfidence = sortedGestures[0].name.toUpperCase();
+      const bestMatch = sortedGestures[0];
+      let highestConfidence = bestMatch.name.toUpperCase();
+      const score = bestMatch.score;
       
-      const isO = isOLikeShape(landmarks);
+      // console.log("C/O gap:", getNormalizedThumbIndexGap(landmarks));
       
-      if (highestConfidence === "C" && isO) {
-        highestConfidence = "O";
-      } else if (highestConfidence === "A" && isO) {
-        highestConfidence = "O";
-      } else if (highestConfidence === "O" && !isO) {
-        const secondBest = sortedGestures[1];
-        if (secondBest) {
-          highestConfidence = secondBest.name.toUpperCase();
-        } else {
+      const isClosed = isClosedOShape(landmarks);
+      const isOpen = isOpenCShape(landmarks);
+      const isAmbiguous = !isClosed && !isOpen;
+      
+      if (highestConfidence === "C") {
+        if (isClosed) {
+          highestConfidence = "O";
+        } else if (isOpen) {
+          // Keep C
+        } else if (isAmbiguous) {
+          if (score < 9.0) return null;
+        }
+      } else if (highestConfidence === "O") {
+        if (isOpen) {
           highestConfidence = "C";
+        } else if (isClosed) {
+          // Keep O
+        } else if (isAmbiguous) {
+          if (score < 9.0) return null;
+        }
+      } else if (highestConfidence === "A") {
+        if (isClosed) {
+          highestConfidence = "O";
         }
       }
 

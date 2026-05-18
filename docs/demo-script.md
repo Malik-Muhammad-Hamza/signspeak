@@ -1,34 +1,48 @@
-# SignSpeak Demo Presentation Script
+# SignSpeak Demo Script
 
-**Estimated Duration:** 90 - 120 seconds
+## 90-Second Presentation Script
+"Hello everyone, we are presenting SignSpeak, a real-time, browser-based sign language interpreter prototype. Communication barriers often exist for those who rely on sign language, and many existing tools require expensive hardware or heavy backend processing.
 
----
+SignSpeak runs entirely in the web browser using a standard webcam. It uses TensorFlow.js and the Handpose model to detect hand landmarks, and a rule-based system to recognize selected static ASL alphabet gestures. For this prototype, we support 10 specific letters: A, B, C, D, L, V, Y, I, O, and W. 
 
-### (Slide 1: Title & Introduction - 15 seconds)
-**Speaker (Muhammad Hamza):** 
-"Hello everyone. We are students from the Department of Computer Information Technology at Government College of Technology Bahawalpur. I am Muhammad Hamza, the group leader, presenting alongside my teammates Ahmad Fazeel, Ramish Ali, and Abdul Munim. Today, we are proud to present our project: **SignSpeak**."
+When a user holds a supported sign steadily for about a second, the app adds it to the current word. When the user drops their hand, the app completes the word and speaks it out loud using the browser's built-in Web Speech API. There are no external paid APIs, and no backend servers—everything is processed locally on your device for privacy and speed. 
 
-### (Slide 2: Problem & Solution - 20 seconds)
-**Speaker:** 
-"A major communication barrier exists between the Deaf and Hard of Hearing community and those who do not understand sign language. Our solution is SignSpeak: a browser-based, real-time sign language interpreter. It aims to instantly translate hand gestures into spoken words. The best part? It runs entirely in your web browser with no external APIs or complex backend servers required."
+Let's look at a live demonstration."
 
-### (Slide 3: Tech Stack & How It Works - 20 seconds)
-**Speaker:** 
-"Under the hood, we built this prototype using React and Vite. For the machine learning aspect, we use TensorFlow.js with the Handpose model to track 21 3D points on the user's hand in real-time. A library called Fingerpose maps those points to recognize selected ASL alphabet gestures. Finally, we use the browser's native Web Speech API to read the translated words aloud."
+## Step-by-Step Live Demo Flow
+1. **Open Deployed Link:** Navigate to the GitHub Pages live link: `https://malik-muhammad-hamza.github.io/signspeak/`
+2. **Camera Permission:** Click "Allow" when the browser requests camera access.
+3. **Show Interface:** Point out the webcam feed, the Model Status indicator, and the active recognition panel.
+4. **How to Use:** Click the "How to Use" button to show the supported gestures list and briefly explain the UI guide.
+5. **Demonstrate Gestures:** 
+   - Make a "C" (keep it open). Show how the progress bar fills up and adds 'C'.
+   - Drop hand briefly.
+   - Make an "O" (close the thumb and index finger). Show it adding 'O'.
+   - Make a "W".
+   - Make a "L".
+6. **Sentence Formation:** Drop the hand for 2 seconds. The app will complete the word "COWL" and speak it out loud.
+7. **Controls:** Click "Speak Again" to demonstrate the audio replay. Click "Delete" and "Clear" to demonstrate text management.
+8. **Limitations:** Honestly explain that it is a prototype supporting 10 letters, and that lighting and angles affect accuracy.
 
-### (Slide 4: Live Demo - 30 seconds)
-**Speaker:** 
-"Let’s look at a live demo.
-1. First, the application accesses the webcam. You can see the system status indicates the model is loaded and ready.
-2. Next, I will show a few selected ASL letters to the camera. Notice how the green progress bar fills up to confirm that my gesture is stable.
-3. The letters string together automatically in the 'Current Word' panel. 
-4. When I drop my hand for two seconds, the system knows the word is finished, adds it to the sentence, and automatically speaks it out loud."
-*(Perform live demo steps while speaking)*
+## Backup Plan
+If the camera fails, detection is too slow, or the lighting is poor:
+- Use the **Keyboard Demo mode** (if available) to simulate gesture inputs and demonstrate the word builder and speech output.
+- Alternatively, show a pre-recorded backup video of the app working in ideal lighting conditions.
+- *Explanation:* "Browser-based machine learning depends heavily on hardware performance, camera quality, and room lighting. In an ideal environment, the detection is much smoother, as shown in our backup testing."
 
-### (Slide 5: Limitations & Future Improvements - 20 seconds)
-**Speaker:** 
-"As this is a prototype, there are a few limitations. Because we are using a standard 2D webcam, fingers blocking each other from the camera's view can sometimes cause detection instability. Also, it currently maps static alphabet shapes. In the future, we plan to migrate to more advanced 3D tracking like MediaPipe and implement neural networks to recognize full, dynamic ASL words instead of just spelling."
+## Common Judge Questions and Short Answers
 
-### (Slide 6: Conclusion - 10 seconds)
-**Speaker:** 
-"SignSpeak is an exploration into how AI and web technologies can make everyday communication more accessible for everyone. Thank you for your time, and we are now open to any questions." 
+**Q: Does it support full sign language?**
+A: No. It is a prototype for selected static ASL alphabet signs.
+
+**Q: Does it need internet?**
+A: The deployed page needs internet to load initially. The recognition itself runs entirely in the browser after the required assets and models are downloaded.
+
+**Q: Does it use external APIs?**
+A: No external paid APIs are used. It uses browser-based TensorFlow.js for vision and the built-in Web Speech API for audio.
+
+**Q: Why only selected letters?**
+A: Some ASL letters are visually similar or involve dynamic movement (like J and Z). To ensure a reliable demonstration, this prototype focuses on 10 highly distinct static gestures.
+
+**Q: Why can pronunciation vary?**
+A: Speech output uses the browser or operating system's native speech synthesis voice, so the pronunciation depends on the available voice engine on that specific device.

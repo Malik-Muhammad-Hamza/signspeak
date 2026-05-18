@@ -1,85 +1,136 @@
 # SignSpeak: Real-Time Sign Language Interpreter
 
 ## Overview
-**SignSpeak** is a browser-based, real-time sign language interpreter prototype. It leverages machine learning to track hand gestures via a webcam, translates them into ASL (American Sign Language) alphabet characters, and synthesizes the resulting words into spoken audio.
+SignSpeak is a browser-based prototype for recognizing selected ASL alphabet gestures through a webcam and converting them into text and speech. 
 
-## Problem Statement
-Communication barriers exist between the Deaf and Hard of Hearing (DHH) community and those who do not understand sign language. While sign language is a rich and expressive visual language, the lack of widespread fluency creates daily challenges in accessibility and interaction. SignSpeak aims to bridge this gap by exploring how computer vision and machine learning can act as a real-time interpreter, instantly translating signs into spoken words.
+It runs entirely in the browser, using webcam input to detect hand landmarks and recognize selected static ASL signs. The app then builds words and sentences, using the browser's Web Speech API for text-to-speech output. The project is deployed and accessible via GitHub Pages.
+
+## Live Demo
+https://malik-muhammad-hamza.github.io/signspeak/
+
+## Repository
+https://github.com/Malik-Muhammad-Hamza/signspeak
 
 ## Features
-- **Live Hand Tracking**: Detects hand landmarks in real-time using a standard webcam.
-- **Gesture Classification**: Translates complex 3D hand shapes into recognizable text characters.
-- **Dynamic Word Builder**: Intelligently strings together individual ASL letters into full words and sentences based on hand stability and timing.
-- **Text-to-Speech**: Synthesizes constructed sentences into spoken audio using the browser's Web Speech API.
-
-## Tech Stack
-- **Frontend Framework**: React.js, Vite
-- **Styling**: Tailwind CSS
-- **Machine Learning**: 
-  - `@tensorflow/tfjs` (Core Engine)
-  - `@tensorflow-models/handpose` (Hand Landmark Detection)
-  - `fingerpose` (Gesture Classification)
-- **Audio Output**: Web Speech API (`window.speechSynthesis`)
-
-## How the System Works
-1. **Capture**: `react-webcam` captures a live video feed from the user's camera.
-2. **Detect**: The TensorFlow Handpose model analyzes the video frames, plotting 21 3D landmarks across the user's hand and fingers.
-3. **Classify**: The Fingerpose library analyzes the curls and directions of those 21 landmarks, comparing them against predefined ASL rules to identify a match.
-4. **Build**: A custom debouncer ensures that only deliberately held signs (stable for 1200ms) are appended to the current word. When the user drops their hand for 2 seconds, the word is completed.
-5. **Speak**: The completed text is sent to the Web Speech API and read aloud.
+- Real-time webcam feed
+- Hand landmark detection
+- Selected ASL alphabet recognition
+- Current letter display
+- Word formation using stable sign timing
+- Sentence formation after no-hand delay
+- Text-to-speech output
+- Delete, Clear, and Speak Again controls
+- How to Use popup/modal
+- Supported signs guide
+- Responsive UI
+- GitHub Pages deployment
 
 ## Supported Gestures
-This prototype focuses on demonstrating viability. While the codebase contains experimental logic for the entire alphabet,while the logic of all alphabets from A-Z is added the following letters have been primarily targeted for stability testing:
-**A, B, C, D, L, V, Y, I,J, W**
+A, B, C, D, L, V, Y, I, O, W
 
-## Installation Steps
-Ensure you have [Node.js](https://nodejs.org/) (v16+) installed on your machine.
+*Note: This prototype currently supports selected static ASL alphabet gestures only. Unsupported signs may not be detected correctly.*
 
-1. Clone the repository or extract the project folder.
-2. Open a terminal in the project's root directory (`signspeak`).
-3. Install the required dependencies:
-   ```bash
-   npm install
-   ```
+## How It Works
+1. Webcam captures the user’s hand.
+2. TensorFlow.js Handpose detects 21 hand landmarks.
+3. Fingerpose compares the landmarks with selected gesture rules.
+4. A stable detected sign is accepted after a short delay.
+5. Accepted letters form the current word.
+6. When no hand/sign is detected for a short period, the word is completed.
+7. The browser Web Speech API speaks the generated text.
 
-## How to Run Locally
-Start the local Vite development server by running:
+## Timing and Word Formation
+- A sign must remain stable for about 1.2 seconds before being added.
+- This prevents accidental repeated letters.
+- When no hand/sign is detected for about 2 seconds, the current word is completed.
+- Delete removes the last letter.
+- Clear resets the text.
+- Speak Again repeats the generated text.
+
+## Gesture Guide
+- **A:** Make a fist with all fingers curled. Keep the thumb along the side/outside of the fist.
+- **B:** Keep all four fingers straight and together. Fold the thumb across the palm.
+- **C:** Curve the fingers and thumb to form an open C shape. There should be a visible gap between the thumb and index finger.
+- **D:** Point the index finger upward. Curl the middle, ring, and pinky fingers. Keep the thumb near the curled fingers.
+- **L:** Extend the thumb and index finger to form an L shape. Curl the remaining fingers.
+- **V:** Extend the index and middle fingers apart like a V. Curl the ring and pinky fingers.
+- **Y:** Extend the thumb and pinky finger. Curl the index, middle, and ring fingers.
+- **I:** Extend only the pinky finger. Curl the thumb, index, middle, and ring fingers.
+- **O:** Curve all fingers and thumb into a closed O shape. The thumb and index finger should touch or nearly touch.
+- **W:** Extend the index, middle, and ring fingers. Curl the pinky and thumb.
+
+## Installation
+```bash
+npm install
+```
+
+## Run Locally
 ```bash
 npm run dev
 ```
-Open the provided local URL (typically `http://localhost:5173`) in your browser. 
-*(Note: You must grant the browser permission to access your webcam.)*
+The local URL is usually: http://localhost:5173/
 
-## How to Build for Production
-To create an optimized production build, run:
+## Build
 ```bash
 npm run build
 ```
-This will bundle the application into a `dist/` directory, ready to be deployed to any static hosting service.
+
+## Deployment
+SignSpeak is deployed using GitHub Pages. 
+The `vite.config.js` is configured with `base: "/signspeak/"`. 
+Deployment uses the `gh-pages` branch depending on the repository setup.
+
+## Project Structure
+```text
+src/
+  components/
+    HowToUseModal.jsx
+    WebcamFeed.jsx
+  hooks/
+    useHandDetection.js
+    useKeyboardDemo.js
+    useWordBuilder.js
+  utils/
+    drawHand.js
+    gestureDescriptions.js
+    gestureDetector.js
+    speechOutput.js
+  App.jsx
+  index.css
+  main.jsx
+docs/
+  demo-script.md
+  project-documentation.md
+```
 
 ## Limitations
-- **Prototype Status**: This is a proof-of-concept student project, not a production-ready medical or accessibility device.
-- **2D Camera Occlusion**: The system relies on a standard 2D webcam. Gestures where fingers hide or block other fingers from the camera's view (occlusion) can cause detection instability.
-- **Lighting and Backgrounds**: Detection accuracy heavily depends on the user's environment. Poor lighting or busy backgrounds may interfere with TensorFlow's ability to track the hand accurately.
-- **Static Alphabet Only**: The system currently maps static alphabet shapes. It does not support dynamic signs (like 'J' which require motion) or full ASL word signs.
+- Prototype only.
+- Supports selected ASL alphabet gestures, not full A-Z.
+- Recognizes static signs only.
+- Does not translate full sign language grammar.
+- Accuracy depends on lighting, camera quality, hand distance, hand angle, and background.
+- Similar signs such as C and O may require careful positioning.
+- Speech pronunciation depends on browser/system voice.
 
 ## Future Improvements
-- Migration to modern MediaPipe hand tracking for improved speed, 3D depth perception, and accuracy.
-- Addition of an LSTM (Long Short-Term Memory) neural network to track hand motion over time, allowing for the detection of dynamic signs and full words rather than just static letters.
-- User-calibration settings to account for different hand sizes, skin tones, and resting positions.
+- Full alphabet support after better tuning.
+- Dataset-trained classifier instead of only rule-based Fingerpose.
+- Improved C/O and similar gesture separation.
+- Better support for dynamic signs like J and Z.
+- Multi-hand support.
+- Urdu/local language speech support.
+- User calibration mode.
+- Practice/training mode.
+- Backend-free offline-ready PWA mode.
 
----
+## Team Members
+- Muhammad Hamza - Group Leader - 2K23-815
+- Ahmad Fazeel - 2K23-850
+- Ramish Ali - 2K23-811
+- Abdul Munim - 2K23-836
 
-## Project Details
-
-### Team Members
-- **Muhammad Hamza** *(Group Leader)* - 2K23-815
-- **Ahmad Fazeel** - 2K23-850
-- **Ramish Ali** - 2K23-811
-- **Abdul Munim** - 2K23-836
-
-### Department
+## Department
 Department of Computer Information Technology
 
-### Institute
+## Institute
 Government College of Technology Bahawalpur
