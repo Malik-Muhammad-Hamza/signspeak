@@ -4,6 +4,12 @@ import { speakWord } from "../utils/speechOutput";
 export const useWordBuilder = (detectedLetter) => {
   const [currentLetter, setCurrentLetter] = useState(null);
   const [currentWord, setCurrentWord] = useState("");
+  const currentWordRef = useRef("");
+  
+  useEffect(() => {
+    currentWordRef.current = currentWord;
+  }, [currentWord]);
+
   const [fullSentence, setFullSentence] = useState("");
   const [progress, setProgress] = useState(0);
   const [gestureHistory, setGestureHistory] = useState([]);
@@ -26,17 +32,14 @@ export const useWordBuilder = (detectedLetter) => {
       if (detectedLetter === null) {
         // Start 2000ms timer to append word to sentence and speak
         spaceTimerRef.current = setTimeout(() => {
-          setCurrentWord((prevWord) => {
-            if (prevWord.length > 0) {
-              setFullSentence((prevSentence) => {
-                const newSentence = prevSentence ? prevSentence + " " + prevWord : prevWord;
-                return newSentence;
-              });
-              speakWord(prevWord);
-              return "";
-            }
-            return prevWord;
-          });
+          const wordToSpeak = currentWordRef.current;
+          if (wordToSpeak.length > 0) {
+            speakWord(wordToSpeak);
+            setFullSentence((prevSentence) => {
+              return prevSentence ? prevSentence + " " + wordToSpeak : wordToSpeak;
+            });
+            setCurrentWord("");
+          }
         }, 2000);
         
         lockRef.current = null;
