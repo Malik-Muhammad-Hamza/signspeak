@@ -5,6 +5,7 @@ import { useHandDetection } from "./hooks/useHandDetection";
 import { useWordBuilder } from "./hooks/useWordBuilder";
 import { useKeyboardDemo } from "./hooks/useKeyboardDemo";
 import HowToUseModal from "./components/HowToUseModal";
+import Toast from "./components/Toast";
 
 function App() {
   const webcamRef = useRef(null);
@@ -17,7 +18,10 @@ function App() {
   
   const activeDetectedLetter = keyboardDemoActive ? keyboardLetter : detectedLetter;
   
-  const { currentWord, fullSentence, progress, gestureHistory, deleteLetter, clearAll, speakAgain } = useWordBuilder(activeDetectedLetter);
+  const { currentWord, fullSentence, progress, gestureHistory, deleteLetter, clearAll, speakText, toastMessage } = useWordBuilder(activeDetectedLetter);
+
+  // Filter NEXT_WORD action from the visible letter display
+  const displayLetter = activeDetectedLetter === "NEXT_WORD" ? null : activeDetectedLetter;
 
   const handleCopyText = () => {
     if (fullSentence) {
@@ -156,13 +160,16 @@ function App() {
                 
                 {/* Active Recognition */}
                 <div className="flex-1 flex flex-col">
-                  <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2 h-[36px]">
                     <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     Active Recognition
                   </h2>
                   <div className="flex items-center justify-center h-32 bg-gray-950 rounded-xl border border-gray-800 shadow-inner relative overflow-hidden group">
-                    <span className={`text-7xl font-bold transition-all duration-200 z-10 ${activeDetectedLetter ? "text-white scale-110 drop-shadow-[0_0_20px_rgba(99,102,241,0.4)]" : "text-gray-800 scale-100"}`}>
-                      {activeDetectedLetter || "-"}
+                    <span className={`text-7xl font-bold transition-all duration-200 z-10 ${
+                      displayLetter ? "text-white scale-110 drop-shadow-[0_0_20px_rgba(99,102,241,0.4)]" :
+                      activeDetectedLetter === "NEXT_WORD" ? "text-indigo-400 scale-100" : "text-gray-800 scale-100"
+                    }`}>
+                      {displayLetter || (activeDetectedLetter === "NEXT_WORD" ? "✋" : "-")}
                     </span>
                     <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-900">
                       <div 
@@ -175,7 +182,17 @@ function App() {
 
                 {/* Current Word */}
                 <div className="flex-1 flex flex-col">
-                  <h2 className="text-lg font-semibold text-transparent mb-2 select-none md:block hidden">-</h2>
+                  <div className="flex justify-between items-center mb-2 h-[36px]">
+                    <h2 className="text-lg font-semibold text-transparent select-none md:block hidden">-</h2>
+                    <button 
+                      onClick={speakText} 
+                      disabled={!fullSentence && !currentWord}
+                      className="px-6 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-800 disabled:text-gray-500 disabled:border-gray-700 disabled:shadow-none border border-indigo-500 hover:border-indigo-400 rounded-lg text-white transition-all font-bold text-sm flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(79,70,229,0.5)] hover:shadow-[0_0_25px_rgba(79,70,229,0.7)] hover:scale-105 active:scale-95"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5 10v4a2 2 0 002 2h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 001.707-.707V5.414a1 1 0 00-1.707-.707L10.293 8.121A1 1 0 019.586 8.414H7a2 2 0 00-2 2z"></path></svg>
+                      Speak
+                    </button>
+                  </div>
                   <div className="flex-1 bg-black/50 p-4 rounded-xl border border-gray-800/80 flex flex-col justify-center min-h-[8rem]">
                     <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-2">Current Word</h3>
                     <p className="text-3xl font-mono text-white tracking-widest break-all">
@@ -239,13 +256,6 @@ function App() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                   Download Transcript
                 </button>
-                <button 
-                  onClick={speakAgain} 
-                  className="col-span-2 sm:ml-auto px-6 py-3 bg-indigo-600 hover:bg-indigo-500 border border-indigo-500 hover:border-indigo-400 rounded-xl text-white transition-all font-medium text-sm flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_20px_rgba(79,70,229,0.5)]"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5 10v4a2 2 0 002 2h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 001.707-.707V5.414a1 1 0 00-1.707-.707L10.293 8.121A1 1 0 019.586 8.414H7a2 2 0 00-2 2z"></path></svg>
-                  Speak Again
-                </button>
               </div>
               
             </div>
@@ -286,6 +296,7 @@ function App() {
       </div>
 
       <HowToUseModal isOpen={isHowToUseOpen} onClose={() => setIsHowToUseOpen(false)} />
+      <Toast message={toastMessage} />
     </main>
   );
 }

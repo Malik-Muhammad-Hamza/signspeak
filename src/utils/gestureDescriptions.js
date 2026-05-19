@@ -1,12 +1,26 @@
+//description
 import * as fp from "fingerpose";
 
-// 1. A Sign
 const aSign = new fp.GestureDescription("A");
-// Thumb should be mostly straight/no curl.
+
+// A should be a fist with the thumb exposed/sticking out.
+// Thumb must be mostly straight, not closed inside the fist.
 aSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.NoCurl, 1.0);
-aSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 0.5);
-// Index, middle, ring, and pinky should be full curl.
-for (let finger of [fp.Finger.Index, fp.Finger.Middle, fp.Finger.Ring, fp.Finger.Pinky]) {
+
+// Thumb direction tolerance because camera mirroring/angle changes the direction.
+aSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.VerticalUp, 0.8);
+aSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpLeft, 0.8);
+aSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpRight, 0.8);
+aSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.HorizontalLeft, 0.7);
+aSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.HorizontalRight, 0.7);
+
+// Index, middle, ring, and pinky must be fully curled.
+for (const finger of [
+  fp.Finger.Index,
+  fp.Finger.Middle,
+  fp.Finger.Ring,
+  fp.Finger.Pinky,
+]) {
   aSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
 }
 
@@ -19,9 +33,9 @@ for (let finger of [fp.Finger.Index, fp.Finger.Middle, fp.Finger.Ring, fp.Finger
   bSign.addDirection(finger, fp.FingerDirection.DiagonalUpLeft, 0.5);
   bSign.addDirection(finger, fp.FingerDirection.DiagonalUpRight, 0.5);
 }
-// Thumb should be half/full curl across palm.
-bSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
-bSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 0.5);
+// Thumb should be fully curled/tucked inside the palm — NOT extended.
+bSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 1.0);
+bSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 0.6);
 
 // 3. C Sign
 const cSign = new fp.GestureDescription("C");
@@ -36,15 +50,16 @@ const dSign = new fp.GestureDescription("D");
 // Index should be straight/no curl and vertical up.
 dSign.addCurl(fp.Finger.Index, fp.FingerCurl.NoCurl, 1.0);
 dSign.addDirection(fp.Finger.Index, fp.FingerDirection.VerticalUp, 1.0);
-dSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpLeft, 0.5);
-dSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpRight, 0.5);
+dSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpLeft, 0.6);
+dSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpRight, 0.6);
 // Middle, ring, and pinky should be curled.
-for (let finger of [fp.Finger.Middle, fp.Finger.Ring, fp.Finger.Pinky]) {
+for (const finger of [fp.Finger.Middle, fp.Finger.Ring, fp.Finger.Pinky]) {
   dSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
   dSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
 }
-// Thumb should be half curl.
+// Thumb should be visible/active (near index/curled area) for D — NOT fully tucked.
 dSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
+dSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.NoCurl, 0.7);
 
 // 5. L Sign
 const lSign = new fp.GestureDescription("L");
@@ -137,6 +152,65 @@ wSign.addCurl(fp.Finger.Pinky, fp.FingerCurl.HalfCurl, 0.5);
 wSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
 wSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 1.0);
 
+// 11. M Sign
+// Closed fist with thumb tucked under/behind fingers.
+// Key difference from A: thumb must be curled, NOT exposed/straight.
+const mSign = new fp.GestureDescription("M");
+
+for (const finger of [
+  fp.Finger.Index,
+  fp.Finger.Middle,
+  fp.Finger.Ring,
+  fp.Finger.Pinky,
+]) {
+  mSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
+  mSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
+}
+
+// Thumb must be curled (tucked), never straight/exposed like A.
+mSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 1.0);
+mSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 0.8);
+
+// 12. Z Sign
+// Simplified static pose: index finger extended, thumb FULLY TUCKED.
+// Key difference from D: D has thumb exposed/near fingers; Z has thumb curled/closed.
+// Note: Real ASL Z is a dynamic motion gesture (drawing Z in the air).
+const zSign = new fp.GestureDescription("Z");
+
+zSign.addCurl(fp.Finger.Index, fp.FingerCurl.NoCurl, 1.0);
+zSign.addDirection(fp.Finger.Index, fp.FingerDirection.VerticalUp, 1.0);
+zSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpLeft, 0.8);
+zSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpRight, 0.8);
+
+for (const finger of [fp.Finger.Middle, fp.Finger.Ring, fp.Finger.Pinky]) {
+  zSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
+  zSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
+}
+
+// Thumb must be tucked/closed for Z — this is the primary D vs Z discriminator.
+zSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 1.0);
+zSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 0.8);
+
+// 13. H Sign
+// Index and middle fingers extended horizontally (sideways).
+// Key difference from V: V points upward/diagonal-up; H points horizontal.
+const hSign = new fp.GestureDescription("H");
+
+for (const finger of [fp.Finger.Index, fp.Finger.Middle]) {
+  hSign.addCurl(finger, fp.FingerCurl.NoCurl, 1.0);
+  hSign.addDirection(finger, fp.FingerDirection.HorizontalLeft, 1.0);
+  hSign.addDirection(finger, fp.FingerDirection.HorizontalRight, 1.0);
+  hSign.addDirection(finger, fp.FingerDirection.DiagonalUpLeft, 0.4);
+  hSign.addDirection(finger, fp.FingerDirection.DiagonalUpRight, 0.4);
+  hSign.addDirection(finger, fp.FingerDirection.DiagonalDownLeft, 0.4);
+  hSign.addDirection(finger, fp.FingerDirection.DiagonalDownRight, 0.4);
+}
+
+for (const finger of [fp.Finger.Thumb, fp.Finger.Ring, fp.Finger.Pinky]) {
+  hSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
+  hSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
+}
+
 export const gestureDescriptions = [
   aSign,
   bSign,
@@ -148,6 +222,11 @@ export const gestureDescriptions = [
   iSign,
   oSign,
   wSign,
+  mSign,
+  zSign,
+  hSign,
 ];
 
-export const supportedLetters = ["A", "B", "C", "D", "L", "V", "Y", "I", "O", "W"];
+export const supportedLetters = ["A", "B", "C", "D", "L", "V", "Y", "I", "O", "W", "M", "Z", "H"];
+
+

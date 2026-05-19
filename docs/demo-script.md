@@ -3,7 +3,7 @@
 ## 90-Second Presentation Script
 "Hello everyone, we are presenting SignSpeak, a real-time, browser-based sign language interpreter prototype. Communication barriers often exist for those who rely on sign language, and many existing tools require expensive hardware or heavy backend processing.
 
-SignSpeak runs entirely in the web browser using a standard webcam. It uses TensorFlow.js and the Handpose model to detect hand landmarks, and a rule-based system to recognize selected static ASL alphabet gestures. For this prototype, we support 10 specific letters: A, B, C, D, L, V, Y, I, O, and W. 
+SignSpeak runs entirely in the web browser using a standard webcam. It uses TensorFlow.js and the Handpose model to detect hand landmarks, and a rule-based system to recognize selected static ASL alphabet gestures. For this prototype, we support 13 specific letters: A, B, C, D, L, V, Y, I, O, W, M, Z, and H.
 
 When a user holds a supported sign steadily for about a second, the app adds it to the current word. When the user drops their hand, the app completes the word and speaks it out loud using the browser's built-in Web Speech API. There are no external paid APIs, and no backend servers—everything is processed locally on your device for privacy and speed. 
 
@@ -20,8 +20,10 @@ Let's look at a live demonstration."
    - Make an "O" (close the thumb and index finger). Show it adding 'O'.
    - Make a "W".
    - Make a "L".
-6. **Sentence Formation:** Drop the hand for 2 seconds. The app will complete the word "COWL" and speak it out loud.
-7. **Controls:** Click "Speak Again" to demonstrate the audio replay. Click "Delete" and "Clear" to demonstrate text management.
+   - Make an "M" (closed fist, thumb tucked in). Show it adding 'M'.
+   - Make an "H" (index and middle extended sideways). Show it adding 'H'.
+6. **Sentence Formation:** Drop the hand for 2 seconds. The app will complete the word and add it to the sentence.
+7. **Controls:** Click "Speak" to speak the current sentence. Click "Delete" and "Clear" to demonstrate text management.
 8. **Limitations:** Honestly explain that it is a prototype supporting 10 letters, and that lighting and angles affect accuracy.
 
 ## Backup Plan
@@ -42,7 +44,7 @@ A: The deployed page needs internet to load initially. The recognition itself ru
 A: No external paid APIs are used. It uses browser-based TensorFlow.js for vision and the built-in Web Speech API for audio.
 
 **Q: Why only selected letters?**
-A: Some ASL letters are visually similar or involve dynamic movement (like J and Z). To ensure a reliable demonstration, this prototype focuses on 10 highly distinct static gestures.
+A: Some ASL letters are visually similar or involve dynamic movement (like J). To ensure a reliable demonstration, this prototype focuses on 13 distinct static gestures. Z is included as a simplified static pose; real ASL Z uses motion which this system cannot yet detect. H is orientation-sensitive — it requires horizontal finger direction to be distinguished from V.
 
 **Q: Why can pronunciation vary?**
 A: Speech output uses the browser or operating system's native speech synthesis voice, so the pronunciation depends on the available voice engine on that specific device.

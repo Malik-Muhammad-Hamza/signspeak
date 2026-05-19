@@ -26,7 +26,7 @@ https://github.com/Malik-Muhammad-Hamza/signspeak
 - GitHub Pages deployment
 
 ## Supported Gestures
-A, B, C, D, L, V, Y, I, O, W
+A, B, C, D, L, V, Y, I, O, W, M, Z, H
 
 *Note: This prototype currently supports selected static ASL alphabet gestures only. Unsupported signs may not be detected correctly.*
 
@@ -48,7 +48,7 @@ A, B, C, D, L, V, Y, I, O, W
 - Speak Again repeats the generated text.
 
 ## Gesture Guide
-- **A:** Make a fist with all fingers curled. Keep the thumb along the side/outside of the fist.
+- **A:** Make a fist with all fingers curled. Keep the thumb along the side/outside of the fist, slightly exposed.
 - **B:** Keep all four fingers straight and together. Fold the thumb across the palm.
 - **C:** Curve the fingers and thumb to form an open C shape. There should be a visible gap between the thumb and index finger.
 - **D:** Point the index finger upward. Curl the middle, ring, and pinky fingers. Keep the thumb near the curled fingers.
@@ -58,6 +58,9 @@ A, B, C, D, L, V, Y, I, O, W
 - **I:** Extend only the pinky finger. Curl the thumb, index, middle, and ring fingers.
 - **O:** Curve all fingers and thumb into a closed O shape. The thumb and index finger should touch or nearly touch.
 - **W:** Extend the index, middle, and ring fingers. Curl the pinky and thumb.
+- **M:** Make a closed fist with the thumb tucked under/behind the index, middle, and ring fingers. The thumb must NOT be exposed like A.
+- **Z:** Extend the index finger upward while keeping all other fingers curled. *Note: Real ASL Z is a dynamic motion gesture. This prototype uses a simplified static index-finger pose.*
+- **H:** Extend the index and middle fingers together sideways (horizontally). Curl the thumb, ring, and pinky. H differs from V because the fingers point horizontally, not upward.
 
 ## Installation
 ```bash
@@ -105,11 +108,14 @@ docs/
 
 ## Limitations
 - Prototype only.
-- Supports selected ASL alphabet gestures, not full A-Z.
+- Supports 13 selected ASL alphabet gestures (A, B, C, D, L, V, Y, I, O, W, M, Z, H), not full A-Z.
 - Recognizes static signs only.
 - Does not translate full sign language grammar.
 - Accuracy depends on lighting, camera quality, hand distance, hand angle, and background.
 - Similar signs such as C and O may require careful positioning.
+- **M** requires the thumb to be fully tucked inside the fist to avoid confusion with A.
+- **Z** is a simplified static gesture (index finger extended); real ASL Z requires drawing a Z motion in the air.
+- **H** is orientation-sensitive — fingers must point sideways, not upward, to avoid confusion with V.
 - Speech pronunciation depends on browser/system voice.
 
 ## Future Improvements

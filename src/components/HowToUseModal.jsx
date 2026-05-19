@@ -1,9 +1,9 @@
 import React, { useEffect } from 'react';
 
-const SUPPORTED_LETTERS = ['A', 'B', 'C', 'D', 'L', 'V', 'Y', 'I', 'O', 'W'];
+const SUPPORTED_LETTERS = ['A', 'B', 'C', 'D', 'L', 'V', 'Y', 'I', 'O', 'W', 'M', 'Z', 'H'];
 
 const GESTURE_GUIDE = [
-  { letter: 'A', description: 'Make a fist with all fingers curled. Keep the thumb along the side of the fist.' },
+  { letter: 'A', description: 'Make a fist with all fingers curled. Keep the thumb along the side of the fist, slightly exposed.' },
   { letter: 'B', description: 'Keep all four fingers straight and together. Fold the thumb across the palm.' },
   { letter: 'C', description: 'Curve all fingers and thumb to form a C-like shape.' },
   { letter: 'D', description: 'Point the index finger upward. Curl the middle, ring, and pinky fingers. Touch the thumb near the curled fingers.' },
@@ -12,7 +12,10 @@ const GESTURE_GUIDE = [
   { letter: 'Y', description: 'Extend the thumb and pinky finger. Curl the index, middle, and ring fingers.' },
   { letter: 'I', description: 'Extend only the pinky finger. Curl the thumb, index, middle, and ring fingers.' },
   { letter: 'O', description: 'Curve all fingers and thumb together to form an O shape.' },
-  { letter: 'W', description: 'Extend the index, middle, and ring fingers. Curl the pinky and thumb.' }
+  { letter: 'W', description: 'Extend the index, middle, and ring fingers. Curl the pinky and thumb.' },
+  { letter: 'M', description: 'Make a closed fist with the thumb tucked under/behind the index, middle, and ring fingers. Unlike A, the thumb should not be exposed or sticking out.' },
+  { letter: 'Z', description: 'Extend the index finger while keeping all other fingers curled. In real ASL, Z is drawn as a motion gesture in the air. This prototype uses a simplified static index-finger pose.' },
+  { letter: 'H', description: 'Extend the index and middle fingers together sideways (horizontally). Curl the thumb, ring, and pinky. Unlike V, the two extended fingers point horizontally, not upward.' }
 ];
 
 export default function HowToUseModal({ isOpen, onClose }) {
@@ -162,6 +165,9 @@ export default function HowToUseModal({ isOpen, onClose }) {
               <li>It recognizes selected static ASL alphabet signs only.</li>
               <li>Accuracy depends on lighting, camera quality, hand position, and gesture similarity.</li>
               <li>Some similar signs may require careful hand positioning.</li>
+              <li><strong className="text-gray-200">Z</strong> is normally a dynamic ASL sign (drawn as a Z in the air). This prototype uses a simplified static index-finger pose, which may conflict with similar signs like D.</li>
+              <li><strong className="text-gray-200">M</strong> requires careful thumb tucking to distinguish it from A. Keep the thumb fully inside the fist.</li>
+              <li><strong className="text-gray-200">H</strong> may be confused with V if the fingers point upward instead of sideways. Rotate the hand so the fingers point horizontally.</li>
             </ul>
           </section>
         </div>
