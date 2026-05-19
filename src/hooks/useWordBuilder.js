@@ -13,6 +13,7 @@ export const useWordBuilder = (detectedLetter) => {
   const progressIntervalRef = useRef(null);
   const spaceTimerRef = useRef(null);
   const progressValueRef = useRef(0);
+  const wordCompletedRef = useRef(false);
 
   useEffect(() => {
     if (detectedLetter !== currentLetter) {
@@ -24,27 +25,38 @@ export const useWordBuilder = (detectedLetter) => {
       if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       
       if (detectedLetter === null) {
-        // Start 2000ms timer to append word to sentence and speak
-        spaceTimerRef.current = setTimeout(() => {
-          setCurrentWord((prevWord) => {
-            if (prevWord.length > 0) {
-              setFullSentence((prevSentence) => {
-                const newSentence = prevSentence ? prevSentence + " " + prevWord : prevWord;
-                return newSentence;
+        if (spaceTimerRef.current) clearTimeout(spaceTimerRef.current);
+        
+        if (currentWord.trim() !== "" && !wordCompletedRef.current) {
+          spaceTimerRef.current = setTimeout(() => {
+            if (!wordCompletedRef.current) {
+              wordCompletedRef.current = true;
+              
+              setFullSentence((prev) => {
+                const trimmedWord = currentWord.trim();
+                if (!trimmedWord) return prev;
+                
+                const words = prev.trim().split(/\s+/);
+                const lastWord = words[words.length - 1];
+                
+                if (lastWord?.toLowerCase() === trimmedWord.toLowerCase()) {
+                  return prev;
+                }
+                
+                return prev ? `${prev} ${trimmedWord}` : trimmedWord;
               });
-              speakWord(prevWord);
-              return "";
+              
+              speakWord(currentWord.trim());
+              setCurrentWord("");
             }
-            return prevWord;
-          });
-        }, 2000);
+          }, 2000);
+        }
         
         lockRef.current = null;
       } else {
         if (spaceTimerRef.current) clearTimeout(spaceTimerRef.current);
         
         if (detectedLetter !== lockRef.current) {
-          // Track progress over 1200ms
           progressIntervalRef.current = setInterval(() => {
             progressValueRef.current += (100 / 10);
             if (progressValueRef.current >= 100) {
@@ -58,6 +70,7 @@ export const useWordBuilder = (detectedLetter) => {
             setCurrentWord((prev) => prev + detectedLetter);
             setGestureHistory((prev) => [...prev, detectedLetter].slice(-10));
             lockRef.current = detectedLetter;
+            wordCompletedRef.current = false;
             setProgress(0);
             progressValueRef.current = 0;
             if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
@@ -65,12 +78,21 @@ export const useWordBuilder = (detectedLetter) => {
         }
       }
     }
-  }, [detectedLetter, currentLetter]);
+  }, [detectedLetter, currentLetter, currentWord]);
+
+  useEffect(() => {
+    return () => {
+      if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      if (spaceTimerRef.current) clearTimeout(spaceTimerRef.current);
+    };
+  }, []);
 
   const deleteLetter = () => {
     if (currentWord.length > 0) {
       setCurrentWord((prev) => prev.slice(0, -1));
       setGestureHistory((hist) => hist.slice(0, -1));
+      wordCompletedRef.current = false;
     }
   };
 
@@ -81,6 +103,7 @@ export const useWordBuilder = (detectedLetter) => {
     lockRef.current = null;
     setProgress(0);
     progressValueRef.current = 0;
+    wordCompletedRef.current = false;
   };
 
   const speakAgain = () => {
