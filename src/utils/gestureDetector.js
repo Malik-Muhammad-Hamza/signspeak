@@ -127,6 +127,18 @@ const isBThumbInside = (landmarks) => {
   return thumbToMiddle <= 0.65;
 };
 
+/**
+ * M guard: thumb must be tucked inside the fist (not exposed/sticking out).
+ * When the thumb is exposed, thumb tip (4) is far from the palm center (9).
+ * Threshold 0.80 — slightly more lenient than B (0.65) because in M the
+ * thumb tucks across the palm under three fingers, not fully folded over.
+ */
+const isMThumbTucked = (landmarks) => {
+  if (!landmarks || landmarks.length < 21) return false;
+  const thumbToMiddle = getNormalizedDistance(landmarks, 4, 9);
+  return thumbToMiddle <= 0.80;
+};
+
 // ─── Main detector ───────────────────────────────────────────────────────────
 
 export const detectGesture = (predictions) => {
@@ -192,6 +204,13 @@ export const detectGesture = (predictions) => {
         if (!isZClosedThumbShape(landmarks)) {
           highestConfidence = "D";
         }
+      }
+
+      // ── M correction: thumb must be tucked inside the fist ───────────────
+      // Prevents a fist with exposed/outstretched thumb from registering as M.
+      if (highestConfidence === "M" && !isMThumbTucked(landmarks)) {
+        const secondBest = sortedGestures[1];
+        highestConfidence = secondBest ? secondBest.name.toUpperCase() : null;
       }
 
       return highestConfidence;

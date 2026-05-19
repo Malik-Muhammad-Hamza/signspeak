@@ -153,8 +153,11 @@ wSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
 wSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 1.0);
 
 // 11. M Sign
-// Closed fist with thumb tucked under/behind fingers.
-// Key difference from A: thumb must be curled, NOT exposed/straight.
+// Tight closed fist — fingers FULLY curled into the palm, thumb tucked inside.
+// Key difference from A: thumb is curled/hidden, NOT exposed.
+// Key difference from E: E fingers are BENT/HOOKED (HalfCurl dominant);
+//   M fingers are FULLY CLOSED (FullCurl dominant, very low HalfCurl tolerance).
+// No direction rules — fist orientation varies too much with hand tilt.
 const mSign = new fp.GestureDescription("M");
 
 for (const finger of [
@@ -164,10 +167,11 @@ for (const finger of [
   fp.Finger.Pinky,
 ]) {
   mSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
-  mSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
+  // Low HalfCurl tolerance — M is a tight fist, not a bent/hooked hand.
+  mSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.3);
 }
 
-// Thumb must be curled (tucked), never straight/exposed like A.
+// Thumb must be curled (tucked inside), never straight/exposed like A.
 mSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 1.0);
 mSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 0.8);
 
@@ -211,32 +215,36 @@ for (const finger of [fp.Finger.Thumb, fp.Finger.Ring, fp.Finger.Pinky]) {
   hSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
 }
 
-// E Sign
+// 14. E Sign
+// ASL E: All four fingers bent/hooked into the palm, thumb tucked alongside.
+//
+// Design principle: NO direction constraints on curled fingers.
+// For FullCurl/HalfCurl fingers, fingerpose's direction detection is unreliable
+// across camera angles. Adding unmatched direction rules inflates the
+// max-possible-score denominator and keeps the score below the 8.5 threshold.
+// Curl states alone are sufficient — the detector-level M guard (isMThumbTucked)
+// handles M vs E separation based on thumb position geometry.
+//
+// Scoring on real E (thumb HalfCurl alongside, 4 fingers FullCurl):
+//   matched = 1.0 + 4×1.0 = 5.0 / max 5.0 → score = 10.0 ✓
+// Scoring on A (thumb NoCurl exposed, 4 fingers FullCurl):
+//   matched = 0 + 4×1.0 = 4.0 / max 5.0 → score = 8.0 (below threshold) ✓
 const eSign = new fp.GestureDescription("E");
 
-// Thumb is half curled / tucked against the fingers.
+// Thumb: HalfCurl primary — visible alongside the bent fingers, NOT deep inside.
+// This is the key curl-level difference from M (FullCurl thumb deep in fist).
 eSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
-eSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 0.6);
-eSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.VerticalUp, 0.7);
-eSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpLeft, 0.5);
-eSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpRight, 0.5);
+eSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 0.5);
 
-// Index is curled/bent.
-eSign.addCurl(fp.Finger.Index, fp.FingerCurl.FullCurl, 1.0);
-eSign.addCurl(fp.Finger.Index, fp.FingerCurl.HalfCurl, 0.6);
-eSign.addDirection(fp.Finger.Index, fp.FingerDirection.VerticalUp, 0.7);
-eSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpLeft, 0.5);
-eSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpRight, 0.5);
-
-// Middle, ring, and pinky are curled.
+// All four fingers: FullCurl primary (bent/hooked into the palm).
 for (const finger of [
+  fp.Finger.Index,
   fp.Finger.Middle,
   fp.Finger.Ring,
   fp.Finger.Pinky,
 ]) {
   eSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
-  eSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
-  eSign.addDirection(finger, fp.FingerDirection.VerticalUp, 0.7);
+  eSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.6);
 }
 // 15. F Sign
 // Thumb and index form a small loop/circle; middle, ring, pinky extended upward.
