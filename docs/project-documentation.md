@@ -22,7 +22,7 @@ Many existing sign language translation tools require specialized hardware, inte
 - To maintain an accessible, backend-free architecture.
 
 ## 6. Scope
-The application is a prototype focused exclusively on recognizing a selected subset of static ASL alphabetic signs: A, B, C, D, L, V, Y, I, O, W, M, Z, H. It supports simple word and sentence formation by stringing together individual letters based on timing delays. It does not support full ASL grammar, the complete A-Z alphabet, or true dynamic signs. Note: Z is included as a simplified static prototype gesture; real ASL Z is a dynamic motion sign.
+The application is a prototype focused exclusively on recognizing a selected subset of static ASL alphabetic signs: A, B, C, D, E, F, G, H, I, L, M, O, V, W, Y, Z. It supports simple word and sentence formation by stringing together individual letters based on timing delays. It does not support full ASL grammar, the complete A-Z alphabet, or true dynamic signs. Note: Z is included as a simplified static prototype gesture; real ASL Z is a dynamic motion sign.
 
 ## 7. Tools and Technologies
 - **Frontend Framework:** React, Vite
@@ -63,11 +63,14 @@ The application uses React hooks (`useHandDetection`, `useWordBuilder`) to encap
 
 ## 13. Supported Gestures
 The application recognizes the following static ASL signs:
-**A, B, C, D, L, V, Y, I, O, W, M, Z, H**
+**A, B, C, D, E, F, G, H, I, L, M, O, V, W, Y, Z**
 
 - **M:** Closed fist with thumb tucked under/behind the fingers. The thumb must not be exposed (unlike A).
 - **Z:** Index finger extended with other fingers curled. Simplified static prototype — real ASL Z is a dynamic motion gesture.
 - **H:** Index and middle fingers extended horizontally (sideways). Ring, pinky, and thumb curled. H differs from V by pointing sideways instead of upward.
+- **E:** All four fingers bent/hooked downward with thumb tucked against the fingertips. Compact closed handshape.
+- **F:** Thumb and index form a small loop; middle, ring, and pinky extended upward. Resembles an OK sign.
+- **G:** Index and thumb extended sideways (horizontal), small gap between them; middle/ring/pinky curled. Side-facing gesture.
 
 ## 14. Timing and Sentence Formation
 To prevent repeated or accidental letter entries, a gesture must be held steadily for ~1.2 seconds. A pause in signing (no hand detected for ~2 seconds) signals the completion of a word.
@@ -77,13 +80,16 @@ Testing was conducted manually across various lighting conditions, hand distance
 
 ## 16. Limitations
 - **Prototype Only:** This is a demonstration prototype, not a complete sign language translator.
-- **Limited Vocabulary:** Supports only 13 selected static ASL alphabet gestures.
+- **Limited Vocabulary:** Supports only 16 selected static ASL alphabet gestures.
 - **No Grammar Translation:** Does not support sentence-level ASL grammar.
 - **Environmental Dependency:** Accuracy relies heavily on adequate lighting, a clean background, and clear hand visibility.
 - **Pronunciation Variations:** Speech output depends on the voices available in the user's browser/OS.
 - **Z Simplification:** Z is a dynamic ASL sign normally drawn as a motion in the air. This prototype uses a simplified static index-finger pose, which may conflict with D.
 - **M vs A Confusion:** M and A are both closed-fist shapes. M requires the thumb fully tucked; A exposes the thumb.
 - **H vs V Confusion:** H and V both use two extended fingers. H requires a sideways/horizontal orientation; V requires fingers to point upward.
+- **E vs A/M Confusion:** E, A, and M are all compact closed handshapes. E uses bent/hooked fingers with thumb pressed against fingertips.
+- **F vs O Confusion:** F uses a thumb-index loop with three fingers extended; O curves all fingers into a closed circle.
+- **G vs L/H Confusion:** G uses both index and thumb pointing sideways; L has index pointing up. G is typically shown from the side.
 
 ## 17. Future Enhancements
 - Expansion to the full A-Z alphabet with improved detection models.

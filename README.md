@@ -26,7 +26,7 @@ https://github.com/Malik-Muhammad-Hamza/signspeak
 - GitHub Pages deployment
 
 ## Supported Gestures
-A, B, C, D, L, V, Y, I, O, W, M, Z, H
+A, B, C, D, E, F, G, H, I, L, M, O, V, W, Y, Z
 
 *Note: This prototype currently supports selected static ASL alphabet gestures only. Unsupported signs may not be detected correctly.*
 
@@ -61,6 +61,9 @@ A, B, C, D, L, V, Y, I, O, W, M, Z, H
 - **M:** Make a closed fist with the thumb tucked under/behind the index, middle, and ring fingers. The thumb must NOT be exposed like A.
 - **Z:** Extend the index finger upward while keeping all other fingers curled. *Note: Real ASL Z is a dynamic motion gesture. This prototype uses a simplified static index-finger pose.*
 - **H:** Extend the index and middle fingers together sideways (horizontally). Curl the thumb, ring, and pinky. H differs from V because the fingers point horizontally, not upward.
+- **E:** Bend all four fingers downward/hooked and tuck the thumb closed against the fingers. Unlike A, the thumb should not stick out.
+- **F:** Touch the thumb and index finger together to form a small loop. Keep the middle, ring, and pinky fingers extended upward.
+- **G:** Extend the index finger and thumb sideways/forward with a small gap. Curl the middle, ring, and pinky. This sign is usually shown from the side.
 
 ## Installation
 ```bash
@@ -108,7 +111,7 @@ docs/
 
 ## Limitations
 - Prototype only.
-- Supports 13 selected ASL alphabet gestures (A, B, C, D, L, V, Y, I, O, W, M, Z, H), not full A-Z.
+- Supports 16 selected ASL alphabet gestures (A, B, C, D, E, F, G, H, I, L, M, O, V, W, Y, Z), not full A-Z.
 - Recognizes static signs only.
 - Does not translate full sign language grammar.
 - Accuracy depends on lighting, camera quality, hand distance, hand angle, and background.
@@ -116,6 +119,9 @@ docs/
 - **M** requires the thumb to be fully tucked inside the fist to avoid confusion with A.
 - **Z** is a simplified static gesture (index finger extended); real ASL Z requires drawing a Z motion in the air.
 - **H** is orientation-sensitive — fingers must point sideways, not upward, to avoid confusion with V.
+- **E** may resemble A or M; the thumb must be tucked against bent fingertips, not sticking out sideways.
+- **F** may be confused with O if the extended three fingers are not clearly pointing upward.
+- **G** may be confused with L or H; the index finger must point sideways, not upward.
 - Speech pronunciation depends on browser/system voice.
 
 ## Future Improvements

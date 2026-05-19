@@ -211,6 +211,88 @@ for (const finger of [fp.Finger.Thumb, fp.Finger.Ring, fp.Finger.Pinky]) {
   hSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
 }
 
+// E Sign
+const eSign = new fp.GestureDescription("E");
+
+// Thumb is half curled / tucked against the fingers.
+eSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
+eSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 0.6);
+eSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.VerticalUp, 0.7);
+eSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpLeft, 0.5);
+eSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpRight, 0.5);
+
+// Index is curled/bent.
+eSign.addCurl(fp.Finger.Index, fp.FingerCurl.FullCurl, 1.0);
+eSign.addCurl(fp.Finger.Index, fp.FingerCurl.HalfCurl, 0.6);
+eSign.addDirection(fp.Finger.Index, fp.FingerDirection.VerticalUp, 0.7);
+eSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpLeft, 0.5);
+eSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpRight, 0.5);
+
+// Middle, ring, and pinky are curled.
+for (const finger of [
+  fp.Finger.Middle,
+  fp.Finger.Ring,
+  fp.Finger.Pinky,
+]) {
+  eSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
+  eSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
+  eSign.addDirection(finger, fp.FingerDirection.VerticalUp, 0.7);
+}
+// 15. F Sign
+// Thumb and index form a small loop/circle; middle, ring, pinky extended upward.
+// Resembles an OK sign.
+const fSign = new fp.GestureDescription("F");
+
+// Thumb and index curl to form the loop.
+fSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
+fSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.FullCurl, 0.7);
+
+fSign.addCurl(fp.Finger.Index, fp.FingerCurl.HalfCurl, 1.0);
+fSign.addCurl(fp.Finger.Index, fp.FingerCurl.FullCurl, 0.7);
+
+// Middle, ring, pinky extended upward.
+for (const finger of [fp.Finger.Middle, fp.Finger.Ring, fp.Finger.Pinky]) {
+  fSign.addCurl(finger, fp.FingerCurl.NoCurl, 1.0);
+  fSign.addDirection(finger, fp.FingerDirection.VerticalUp, 1.0);
+  fSign.addDirection(finger, fp.FingerDirection.DiagonalUpLeft, 0.6);
+  fSign.addDirection(finger, fp.FingerDirection.DiagonalUpRight, 0.6);
+}
+
+// 16. G Sign
+// G has the index finger extended sideways/forward and the thumb visible near/below it.
+// Middle, ring, and pinky are curled. Shown side-facing.
+// Key difference from L: L has index pointing UP with thumb horizontal.
+//   G has index pointing HORIZONTAL/SIDEWAYS with thumb also visible (not tucked).
+// Key difference from M/Z: thumb must NOT be fully hidden; HalfCurl or NoCurl allowed.
+const gSign = new fp.GestureDescription("G");
+
+// Index finger extended sideways/forward.
+gSign.addCurl(fp.Finger.Index, fp.FingerCurl.NoCurl, 1.0);
+gSign.addDirection(fp.Finger.Index, fp.FingerDirection.HorizontalLeft, 1.0);
+gSign.addDirection(fp.Finger.Index, fp.FingerDirection.HorizontalRight, 1.0);
+gSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpLeft, 0.4);
+gSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalUpRight, 0.4);
+gSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalDownLeft, 0.4);
+gSign.addDirection(fp.Finger.Index, fp.FingerDirection.DiagonalDownRight, 0.4);
+
+// Thumb visible below/near the index finger — not hidden inside the fist.
+// HalfCurl is the primary state (thumb bent slightly, pointing sideways);
+// NoCurl is also accepted but weighted lower.
+gSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.HalfCurl, 1.0);
+gSign.addCurl(fp.Finger.Thumb, fp.FingerCurl.NoCurl, 0.8);
+gSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.HorizontalLeft, 0.8);
+gSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.HorizontalRight, 0.8);
+gSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpLeft, 0.4);
+gSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalUpRight, 0.4);
+gSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalDownLeft, 0.4);
+gSign.addDirection(fp.Finger.Thumb, fp.FingerDirection.DiagonalDownRight, 0.4);
+
+// Middle, ring, and pinky curled into the palm.
+for (const finger of [fp.Finger.Middle, fp.Finger.Ring, fp.Finger.Pinky]) {
+  gSign.addCurl(finger, fp.FingerCurl.FullCurl, 1.0);
+  gSign.addCurl(finger, fp.FingerCurl.HalfCurl, 0.5);
+}
+
 export const gestureDescriptions = [
   aSign,
   bSign,
@@ -225,8 +307,9 @@ export const gestureDescriptions = [
   mSign,
   zSign,
   hSign,
+  eSign,
+  fSign,
+  gSign,
 ];
 
-export const supportedLetters = ["A", "B", "C", "D", "L", "V", "Y", "I", "O", "W", "M", "Z", "H"];
-
-
+export const supportedLetters = ["A", "B", "C", "D", "L", "V", "Y", "I", "O", "W", "M", "Z", "H", "E", "F", "G"];

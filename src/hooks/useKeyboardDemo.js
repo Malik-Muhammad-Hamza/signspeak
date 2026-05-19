@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 
-const validKeys = ["a", "b", "c", "d", "l", "v", "y", "i", "o", "w", "m", "z", "h"];
+const validKeys = ["a", "b", "c", "d", "l", "v", "y", "i", "o", "w", "m", "z", "h", "e", "f", "g"];
 
 export const useKeyboardDemo = () => {
   const [keyboardLetter, setKeyboardLetter] = useState(null);

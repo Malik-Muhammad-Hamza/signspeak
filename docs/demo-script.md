@@ -3,7 +3,7 @@
 ## 90-Second Presentation Script
 "Hello everyone, we are presenting SignSpeak, a real-time, browser-based sign language interpreter prototype. Communication barriers often exist for those who rely on sign language, and many existing tools require expensive hardware or heavy backend processing.
 
-SignSpeak runs entirely in the web browser using a standard webcam. It uses TensorFlow.js and the Handpose model to detect hand landmarks, and a rule-based system to recognize selected static ASL alphabet gestures. For this prototype, we support 13 specific letters: A, B, C, D, L, V, Y, I, O, W, M, Z, and H.
+SignSpeak runs entirely in the web browser using a standard webcam. It uses TensorFlow.js and the Handpose model to detect hand landmarks, and a rule-based system to recognize selected static ASL alphabet gestures. For this prototype, we support 16 specific letters: A, B, C, D, E, F, G, H, I, L, M, O, V, W, Y, Z.
 
 When a user holds a supported sign steadily for about a second, the app adds it to the current word. When the user drops their hand, the app completes the word and speaks it out loud using the browser's built-in Web Speech API. There are no external paid APIs, and no backend servers—everything is processed locally on your device for privacy and speed. 
 
@@ -44,7 +44,7 @@ A: The deployed page needs internet to load initially. The recognition itself ru
 A: No external paid APIs are used. It uses browser-based TensorFlow.js for vision and the built-in Web Speech API for audio.
 
 **Q: Why only selected letters?**
-A: Some ASL letters are visually similar or involve dynamic movement (like J). To ensure a reliable demonstration, this prototype focuses on 13 distinct static gestures. Z is included as a simplified static pose; real ASL Z uses motion which this system cannot yet detect. H is orientation-sensitive — it requires horizontal finger direction to be distinguished from V.
+A: Some ASL letters are visually similar or involve dynamic movement (like J). To ensure a reliable demonstration, this prototype focuses on 16 distinct static gestures. Z is included as a simplified static pose; real ASL Z uses motion which this system cannot yet detect. G is a side-facing gesture, F uses a thumb-index loop, and E is a compact closed handshape — all require careful hand positioning.
 
 **Q: Why can pronunciation vary?**
 A: Speech output uses the browser or operating system's native speech synthesis voice, so the pronunciation depends on the available voice engine on that specific device.
