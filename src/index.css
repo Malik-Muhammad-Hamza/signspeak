@@ -19,3 +19,13 @@ body {
 .animate-fade-in-up {
   animation: fade-in-up 0.25s ease-out;
 }
+
+/* v2 UI animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}

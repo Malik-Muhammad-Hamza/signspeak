@@ -5,12 +5,12 @@
  * frames into the sliding-window buffer.  Calls `onSequenceReady` each time
  * the buffer is full so the caller can run TCN inference.
  *
- * This hook is intentionally decoupled from inference so it can be tested
- * and replaced independently.
+ * MediaPipe Hands is loaded on-demand via dynamic <script> injection so that
+ * v1 users are never affected (the CDN scripts are NOT in index.html).
  *
  * Props / options
  * ---------------
- * videoRef        React ref to the <video> element
+ * webcamRef       React ref from react-webcam (access via .current.video)
  * canvasRef       React ref to an optional debug <canvas>
  * onSequenceReady (sequenceFloat32Array) => void
  * frameCount      32 (default) — must match model training config
@@ -21,39 +21,63 @@ import { useEffect, useRef, useCallback } from 'react';
 import { normalizeLandmarks } from '../utils/landmarkNormalizer';
 import { createFrameBuffer } from '../utils/frameBuffer';
 
-// MediaPipe is loaded via CDN in index.html (same pattern as v1)
-const { Hands, HAND_CONNECTIONS } = window;
-
 const DEFAULT_FRAME_COUNT = 32;
 const FEATURE_SIZE = 63;
 
+// MediaPipe CDN — pinned version for reproducibility
+const MP_VERSION = '0.4.1646424915';
+const MP_BASE    = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${MP_VERSION}`;
+
+/** Injects a <script> tag once and resolves when it loads. */
+function loadScript(src) {
+  if (document.querySelector(`script[src="${src}"]`)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.crossOrigin = 'anonymous';
+    s.onload  = resolve;
+    s.onerror = () => reject(new Error(`Failed to load: ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+/** Load MediaPipe Hands from CDN — idempotent. */
+async function loadMediaPipeHands() {
+  if (window.Hands) return window.Hands;
+
+  await loadScript(`${MP_BASE}/hands.js`);
+
+  if (!window.Hands) throw new Error('[useV2HandDetection] window.Hands not found after script load');
+  return window.Hands;
+}
+
 /**
  * @param {object} opts
- * @param {React.RefObject} opts.videoRef
- * @param {React.RefObject} [opts.canvasRef]
+ * @param {React.RefObject} opts.webcamRef     react-webcam ref (exposes .video)
+ * @param {React.RefObject} [opts.canvasRef]   optional debug canvas
  * @param {function}        opts.onSequenceReady
  * @param {number}          [opts.frameCount=32]
  * @param {boolean}         [opts.enabled=true]
  */
 export function useV2HandDetection({
-  videoRef,
+  webcamRef,
   canvasRef,
   onSequenceReady,
   frameCount = DEFAULT_FRAME_COUNT,
   enabled = true,
 }) {
-  const handsRef = useRef(null);
-  const bufferRef = useRef(createFrameBuffer(frameCount, FEATURE_SIZE));
+  const handsRef     = useRef(null);
+  const bufferRef    = useRef(createFrameBuffer(frameCount, FEATURE_SIZE));
   const animFrameRef = useRef(null);
+  const runningRef   = useRef(false);
 
-  // Stable callback reference
-  const onSequenceReadyRef = useRef(onSequenceReady);
-  useEffect(() => {
-    onSequenceReadyRef.current = onSequenceReady;
-  }, [onSequenceReady]);
+  // Stable callback reference — avoids restarting the detection loop
+  const callbackRef = useRef(onSequenceReady);
+  useEffect(() => { callbackRef.current = onSequenceReady; }, [onSequenceReady]);
 
+  // ── Result handler ──────────────────────────────────────────────────────────
   const handleResults = useCallback((results) => {
-    if (!enabled) return;
+    if (!runningRef.current) return;
 
     const landmarks = results?.multiHandLandmarks?.[0] ?? null;
 
@@ -68,60 +92,72 @@ export function useV2HandDetection({
     bufferRef.current.push(vector);
 
     if (bufferRef.current.isFull()) {
-      const sequence = bufferRef.current.getSequence();
-      onSequenceReadyRef.current?.(sequence);
+      callbackRef.current?.(bufferRef.current.getSequence());
     }
 
-    // Optional debug canvas drawing
+    // Optional landmark skeleton on debug canvas
     if (canvasRef?.current) {
       drawDebugCanvas(canvasRef.current, results);
     }
-  }, [enabled, canvasRef]);
+  }, [canvasRef]);
 
+  // ── Detection loop ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!enabled) return;
 
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-    });
+    let cancelled = false;
+    runningRef.current = false;
 
-    hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 1,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.6,
-    });
+    loadMediaPipeHands()
+      .then((Hands) => {
+        if (cancelled) return;
 
-    hands.onResults(handleResults);
-    handsRef.current = hands;
+        const hands = new Hands({
+          locateFile: (file) => `${MP_BASE}/${file}`,
+        });
+        hands.setOptions({
+          maxNumHands: 1,
+          modelComplexity: 1,
+          minDetectionConfidence: 0.7,
+          minTrackingConfidence: 0.6,
+        });
+        hands.onResults(handleResults);
+        handsRef.current = hands;
+        runningRef.current = true;
 
-    const video = videoRef?.current;
-    if (!video) return;
+        // rAF loop — reads directly from react-webcam's .video element
+        async function detect() {
+          if (!runningRef.current) return;
 
-    let running = true;
+          const video = webcamRef?.current?.video;
+          if (video && video.readyState >= 2) {
+            try {
+              await handsRef.current.send({ image: video });
+            } catch (e) {
+              if (runningRef.current) console.warn('[useV2HandDetection]', e);
+            }
+          }
+          animFrameRef.current = requestAnimationFrame(detect);
+        }
 
-    async function detect() {
-      if (!running) return;
-      if (video.readyState >= 2) {
-        await handsRef.current.send({ image: video });
-      }
-      animFrameRef.current = requestAnimationFrame(detect);
-    }
-
-    detect();
+        detect();
+      })
+      .catch((err) => {
+        console.error('[useV2HandDetection] MediaPipe load failed:', err);
+      });
 
     return () => {
-      running = false;
+      cancelled = true;
+      runningRef.current = false;
       cancelAnimationFrame(animFrameRef.current);
       handsRef.current?.close?.();
       bufferRef.current.reset();
     };
-  }, [enabled, videoRef, handleResults]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);   // handleResults is stable; webcamRef ref-object is stable
 }
 
-// ---------------------------------------------------------------------------
-// Minimal debug canvas renderer (landmarks + connections)
-// ---------------------------------------------------------------------------
+// ── Minimal debug canvas renderer ─────────────────────────────────────────────
 function drawDebugCanvas(canvas, results) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -129,25 +165,24 @@ function drawDebugCanvas(canvas, results) {
   const landmarks = results?.multiHandLandmarks?.[0];
   if (!landmarks) return;
 
-  // Connections
-  if (HAND_CONNECTIONS) {
-    ctx.strokeStyle = 'rgba(0,200,255,0.6)';
+  const connections = window.HAND_CONNECTIONS;
+
+  if (connections) {
+    ctx.strokeStyle = 'rgba(0,200,255,0.5)';
     ctx.lineWidth = 2;
-    for (const [start, end] of HAND_CONNECTIONS) {
-      const s = landmarks[start];
-      const e = landmarks[end];
+    for (const [s, e] of connections) {
+      const a = landmarks[s], b = landmarks[e];
       ctx.beginPath();
-      ctx.moveTo(s.x * canvas.width, s.y * canvas.height);
-      ctx.lineTo(e.x * canvas.width, e.y * canvas.height);
+      ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
+      ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
       ctx.stroke();
     }
   }
 
-  // Landmark dots
   ctx.fillStyle = '#00c8ff';
   for (const lm of landmarks) {
     ctx.beginPath();
-    ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3, 0, Math.PI * 2);
+    ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3.5, 0, Math.PI * 2);
     ctx.fill();
   }
 }
