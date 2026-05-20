@@ -1,0 +1,39 @@
+# SignSpeak v2 — Training Configuration
+# Edit this file before running any pipeline script.
+
+# ─── Data paths ──────────────────────────────────────────────────────────────
+data:
+  ms_asl_root:  "data/ms_asl"          # Directory containing MSASL_*.json + videos/
+  landmarks_dir: "data/landmarks"       # Output for extracted landmark .npy files
+  dataset_path:  "data/dataset.h5"      # Output HDF5 dataset
+  label_map_out: "data/label_map.json"  # Written by 02_build_dataset.py
+
+# ─── Preprocessing ───────────────────────────────────────────────────────────
+preprocessing:
+  frame_count: 32         # Frames per sequence (must match model input)
+  feature_size: 63        # 21 landmarks × 3 (x, y, z)
+  min_clip_frames: 8      # Skip clips shorter than this (too sparse to upsample reliably)
+
+# ─── Model ───────────────────────────────────────────────────────────────────
+model:
+  num_classes: 100        # Adjust to number of MS-ASL classes you include
+  tcn_filters: [64, 128, 256]
+  tcn_kernel_size: 3
+  dropout: 0.3
+  use_residuals: true
+
+# ─── Training ────────────────────────────────────────────────────────────────
+training:
+  epochs: 60
+  batch_size: 32
+  learning_rate: 1.0e-3
+  lr_patience: 8          # ReduceLROnPlateau patience
+  early_stop_patience: 15
+  val_split: 0.1
+  seed: 42
+  output_dir: "models/tcn_v2"
+
+# ─── Export ──────────────────────────────────────────────────────────────────
+export:
+  tfjs_output_dir: "../public/v2/model"   # Relative to training/
+  quantize: false                         # Set true to reduce model size
