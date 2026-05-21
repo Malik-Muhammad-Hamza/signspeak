@@ -14,13 +14,16 @@ Standalone usage:
 """
 
 import json
+import sys
+sys.stdout.reconfigure(encoding="utf-8")
 from pathlib import Path
 
 import yaml
 
 
 def load_config(path="config.yaml"):
-    with open(path) as f:
+    resolved = Path(__file__).parent.parent / path  # utils/ is one level below training/
+    with open(resolved) as f:
         return yaml.safe_load(f)
 
 

@@ -1,11 +1,17 @@
-mediapipe>=0.10.0
-opencv-python-headless>=4.8.0
-numpy>=1.24.0
-h5py>=3.9.0
-pyyaml>=6.0
-scikit-learn>=1.3.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-tensorflow>=2.13.0
-tensorflowjs>=4.10.0
-tqdm>=4.66.0
+# Python 3.11 recommended.
+# These versions are pinned because 01_extract_landmarks.py uses legacy MediaPipe:
+#   mp.solutions.hands
+# Do not add tensorflowjs here. Use a separate export environment later if needed.
+
+opencv-python==4.10.0.84
+mediapipe==0.10.14
+tensorflow==2.15.1
+numpy==1.26.4
+protobuf==4.25.3
+pandas
+tqdm
+scikit-learn
+matplotlib
+h5py
+pyyaml
+yt-dlp

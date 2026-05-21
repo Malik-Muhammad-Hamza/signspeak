@@ -16,6 +16,8 @@ Run:
 """
 
 import json
+import sys
+sys.stdout.reconfigure(encoding="utf-8")
 from pathlib import Path
 
 import h5py
@@ -27,7 +29,8 @@ from tensorflow.keras import layers
 
 
 def load_config(path="config.yaml"):
-    with open(path) as f:
+    resolved = Path(__file__).parent / path
+    with open(resolved) as f:
         return yaml.safe_load(f)
 
 

@@ -3,20 +3,37 @@
 
 # ─── Data paths ──────────────────────────────────────────────────────────────
 data:
-  ms_asl_root:  "data/ms_asl"          # Directory containing MSASL_*.json + videos/
-  landmarks_dir: "data/landmarks"       # Output for extracted landmark .npy files
-  dataset_path:  "data/dataset.h5"      # Output HDF5 dataset
-  label_map_out: "data/label_map.json"  # Written by 02_build_dataset.py
+  ms_asl_root:    "C:/Web-Dev/Datasets/MS-ASL"
+  videos_dir:     "C:/Web-Dev/Datasets/MS-ASL/videos"
+  processed_dir:  "C:/Web-Dev/Datasets/MS-ASL/processed"
+  landmarks_dir:  "C:/Web-Dev/Datasets/MS-ASL/landmarks"
+  dataset_path:   "C:/Web-Dev/Datasets/MS-ASL/processed/dataset.h5"
+  label_map_out:  "C:/Web-Dev/Datasets/MS-ASL/processed/label_map.json"
+
+# ─── Selected classes ─────────────────────────────────────────────────────────
+# Only these words are downloaded and trained. compact_label_id matches list order:
+#   hello=0, yes=1, no=2, help=3, good=4
+classes:
+  - hello
+  - "yes"
+  - "no"
+  - help
+  - good
+
+# ─── Download ─────────────────────────────────────────────────────────────────
+download:
+  # Set low (e.g. 5–10) for an initial smoke-test download. Set null for all.
+  max_per_class_per_split: 10
 
 # ─── Preprocessing ───────────────────────────────────────────────────────────
 preprocessing:
-  frame_count: 32         # Frames per sequence (must match model input)
-  feature_size: 63        # 21 landmarks × 3 (x, y, z)
-  min_clip_frames: 8      # Skip clips shorter than this (too sparse to upsample reliably)
+  frame_count: 32
+  feature_size: 63
+  min_clip_frames: 8
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 model:
-  num_classes: 100        # Adjust to number of MS-ASL classes you include
+  num_classes: 5
   tcn_filters: [64, 128, 256]
   tcn_kernel_size: 3
   dropout: 0.3
@@ -27,7 +44,7 @@ training:
   epochs: 60
   batch_size: 32
   learning_rate: 1.0e-3
-  lr_patience: 8          # ReduceLROnPlateau patience
+  lr_patience: 8
   early_stop_patience: 15
   val_split: 0.1
   seed: 42
@@ -35,5 +52,5 @@ training:
 
 # ─── Export ──────────────────────────────────────────────────────────────────
 export:
-  tfjs_output_dir: "../public/v2/model"   # Relative to training/
-  quantize: false                         # Set true to reduce model size
+  tfjs_output_dir: "../public/v2/model"
+  quantize: false
