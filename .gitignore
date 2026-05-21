@@ -46,3 +46,11 @@ public/v2/model/*.bin
 
 # Jupyter
 .ipynb_checkpoints/
+training/.venv/
+*.mp4
+*.webm
+*.mkv
+*.npy
+*.h5
+*.hdf5
+*.keras
