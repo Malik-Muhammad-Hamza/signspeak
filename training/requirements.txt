@@ -15,3 +15,5 @@ matplotlib
 h5py
 pyyaml
 yt-dlp
+huggingface_hub
+seaborn

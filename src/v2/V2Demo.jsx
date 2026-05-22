@@ -10,12 +10,12 @@
  * Remove the ?v=2 flag to return to the v1 app at any time.
  */
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
-import { useV2HandDetection } from '../hooks/useV2HandDetection';
-import { useV2Prediction } from '../hooks/useV2Prediction';
-import V2PredictionBadge from '../components/V2PredictionBadge';
-import V2Overlay from '../components/V2Overlay';
+import { useV2HandDetection } from './hooks/useV2HandDetection';
+import { useV2Prediction } from './hooks/useV2Prediction';
+import V2PredictionBadge from './components/V2PredictionBadge';
+import V2Overlay from './components/V2Overlay';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const WEBCAM_CONSTRAINTS = { width: 640, height: 480, facingMode: 'user' };
@@ -25,16 +25,17 @@ export default function V2Demo() {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
 
-  // Transcript
-  const [transcript, setTranscript] = useState('');
-  const [words, setWords]           = useState([]);
-  const [debug, setDebug]           = useState(false);
-  const [webcamReady, setWebcamReady] = useState(false);
+  // ── Transcript state ────────────────────────────────────────────────────────
+  const [committedWords, setCommittedWords] = useState([]);
+  const [debug, setDebug]                   = useState(false);
+  const [webcamReady, setWebcamReady]       = useState(false);
 
-  // Internal: track committed letter timing
-  const lastCommitRef  = useRef(null);
-  const lastLabelRef   = useRef(null);
-  const holdStartRef   = useRef(null);
+  // Track which raw label was last committed (ref = no re-render)
+  const lastCommittedLabelRef = useRef(null);
+
+  // ── Label display map ────────────────────────────────────────────────────────
+  const DISPLAY_LABELS = { THANKYOU: 'THANK YOU' };
+  const toDisplayLabel = (label) => DISPLAY_LABELS[label] || label;
 
   // ─── Prediction hook ────────────────────────────────────────────────────────
   const {
@@ -77,35 +78,57 @@ export default function V2Demo() {
     enabled: modelReady && webcamReady,
   });
 
-  // Commit side-effect whenever stableLabel changes
-  React.useEffect(() => {
-    tryCommit(stableLabel);
-  }, [stableLabel, tryCommit]);
+  // ─── Word-level sentence commit ─────────────────────────────────────────────
+  // Fires whenever the smoother produces a new stable label.
+  // Rule: append the word ONCE per gesture; reset the guard when the label
+  //       disappears (hand leaves frame / confidence drops) so the same word
+  //       can commit again after the user releases and re-signs.
+  useEffect(() => {
+    if (!stableLabel) {
+      // Hand gone or confidence too low — allow next commit for any label
+      lastCommittedLabelRef.current = null;
+      return;
+    }
+    if (stableLabel === lastCommittedLabelRef.current) {
+      // Same word still on screen — already committed, skip duplicate
+      return;
+    }
+    // New word detected
+    lastCommittedLabelRef.current = stableLabel;
+    setCommittedWords(prev => [...prev, toDisplayLabel(stableLabel)]);
+  }, [stableLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Word builder ───────────────────────────────────────────────────────────
-  const commitSpace = () => {
-    const word = transcript.trim();
-    if (word) setWords(prev => [...prev, word]);
-    setTranscript('');
-    lastCommitRef.current = null;
-  };
+  // ─── Keep existing COMMIT_HOLD_MS / tryCommit as-is ─────────────────────────
+  // (unchanged — still drives the prediction smoother reset)
 
-  const deleteLastChar = () => {
-    setTranscript(prev => prev.slice(0, -1));
-    lastCommitRef.current = null;
+  // ─── Manual controls ─────────────────────────────────────────────────────────
+  const deleteLastWord = () => {
+    setCommittedWords(prev => {
+      const next = prev.slice(0, -1);
+      if (next.length === 0) lastCommittedLabelRef.current = null;
+      return next;
+    });
   };
 
   const clearAll = () => {
-    setTranscript('');
-    setWords([]);
-    lastCommitRef.current = null;
+    setCommittedWords([]);
+    lastCommittedLabelRef.current = null;
+    resetSmoother();
   };
 
   const speakSentence = () => {
-    const sentence = [...words, transcript].join(' ').trim();
+    const sentence = committedWords.join(' ').trim();
     if (!sentence) return;
-    const utt = new SpeechSynthesisUtterance(sentence);
-    window.speechSynthesis.speak(utt);
+    if (!window.speechSynthesis) {
+      alert('Speech synthesis is not supported in this browser.');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance   = new SpeechSynthesisUtterance(sentence);
+    utterance.lang    = 'en-US';
+    utterance.rate    = 0.9;
+    utterance.pitch   = 1;
+    window.speechSynthesis.speak(utterance);
   };
 
   // ─── Webcam readiness ───────────────────────────────────────────────────────
@@ -174,10 +197,7 @@ export default function V2Demo() {
 
           {/* Controls */}
           <div style={styles.controls}>
-            <button style={styles.ctrlBtn} onClick={commitSpace} title="Add space / commit word">
-              ⎵ Space
-            </button>
-            <button style={styles.ctrlBtn} onClick={deleteLastChar} title="Delete last letter">
+            <button style={styles.ctrlBtn} onClick={deleteLastWord} title="Remove last detected word">
               ⌫ Delete
             </button>
             <button style={{ ...styles.ctrlBtn, ...styles.ctrlBtnDanger }} onClick={clearAll}>
@@ -190,23 +210,32 @@ export default function V2Demo() {
         <section style={styles.transcriptSection}>
           <h2 style={styles.sectionTitle}>Live Transcript</h2>
 
-          {/* Current letter buffer */}
+          {/* Current detection */}
           <div style={styles.currentWord}>
-            <span style={styles.currentWordLabel}>Spelling:</span>
-            <span style={styles.currentWordText}>{transcript || <span style={styles.placeholder}>—</span>}</span>
+            <span style={styles.currentWordLabel}>Detecting:</span>
+            <span style={styles.currentWordText}>
+              {stableLabel
+                ? toDisplayLabel(stableLabel)
+                : <span style={styles.placeholder}>—</span>
+              }
+            </span>
           </div>
 
-          {/* Word history */}
-          <div style={styles.wordList}>
-            {words.map((w, i) => (
-              <span key={i} style={styles.wordChip}>{w}</span>
-            ))}
+          {/* Detected words as chips */}
+          <div>
+            <p style={styles.fieldLabel}>Detected words:</p>
+            <div style={styles.wordList}>
+              {committedWords.length > 0
+                ? committedWords.map((w, i) => <span key={i} style={styles.wordChip}>{w}</span>)
+                : <span style={styles.placeholder}>Signs detected will appear here.</span>
+              }
+            </div>
           </div>
 
-          {/* Sentence read-back */}
+          {/* Live sentence + speak */}
           <div style={styles.sentenceRow}>
             <p style={styles.sentence}>
-              {[...words, transcript].join(' ').trim() || 'Your sentence will appear here…'}
+              {committedWords.join(' ') || 'Your sentence will appear here…'}
             </p>
             <button style={styles.speakBtn} onClick={speakSentence}>
               🔊 Speak
@@ -226,7 +255,7 @@ export default function V2Demo() {
             </div>
           )}
           {modelError && (
-            <div style={{ ...styles.statusCard, borderColor: '#ff6b6b33' }}>
+            <div style={{ ...styles.statusCard, borderColor: 'rgba(255,107,107,0.2)' }}>
               <span style={{ fontSize: 24 }}>⚠️</span>
               <div>
                 <p style={styles.statusTitle}>Model not found</p>
@@ -242,11 +271,14 @@ export default function V2Demo() {
           <div style={styles.hintBox}>
             <p style={styles.hintTitle}>How it works</p>
             <ol style={styles.hintList}>
-              <li>Show your hand clearly in the camera frame.</li>
-              <li>Hold an ASL letter sign for ~1 second — it will commit automatically.</li>
-              <li>Press <strong>Space</strong> to end a word, <strong>Delete</strong> to undo a letter.</li>
+              <li>Perform a supported ASL word sign clearly in the camera frame.</li>
+              <li>Words are added automatically when confidently detected.</li>
+              <li>Lower the sign between words to prevent duplicates.</li>
               <li>Press <strong>Speak</strong> to hear the full sentence.</li>
             </ol>
+            <p style={{ ...styles.hintList, marginTop: 8, listStyle: 'none', paddingLeft: 0 }}>
+              <strong>Supported signs:</strong> Hello · Yes · No · Help · Thank You
+            </p>
           </div>
         </section>
       </main>
@@ -285,7 +317,8 @@ const styles = {
   nav: { display: 'flex', gap: 10 },
   navBtn: {
     padding: '6px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(255,255,255,0.07)',
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.12)',
     color: '#e0e0e0', textDecoration: 'none',
     transition: 'background 0.2s',
   },
@@ -307,7 +340,8 @@ const styles = {
   badgeRow: { display: 'flex', justifyContent: 'center' },
   controls: { display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' },
   ctrlBtn: {
-    padding: '9px 20px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)',
+    padding: '9px 20px', borderRadius: 10,
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.12)',
     background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: 14,
     cursor: 'pointer', fontWeight: 600, transition: 'background 0.18s',
   },
@@ -327,7 +361,8 @@ const styles = {
   },
   currentWordLabel: { fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' },
   currentWordText: { fontSize: 32, fontWeight: 800, fontFamily: 'monospace', color: '#fff', letterSpacing: '0.12em' },
-  placeholder: { color: 'rgba(255,255,255,0.2)' },
+  placeholder: { color: 'rgba(255,255,255,0.2)', fontStyle: 'italic', fontSize: 13 },
+  fieldLabel: { margin: '0 0 8px', fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' },
   wordList: { display: 'flex', flexWrap: 'wrap', gap: 8, minHeight: 36 },
   wordChip: {
     padding: '5px 14px', borderRadius: 20, background: 'rgba(72,207,173,0.15)',
@@ -346,7 +381,8 @@ const styles = {
   },
   statusCard: {
     display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 18px',
-    borderRadius: 12, border: '1px solid rgba(108,99,255,0.25)',
+    borderRadius: 12,
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(108,99,255,0.25)',
     background: 'rgba(108,99,255,0.07)',
   },
   spinner: {

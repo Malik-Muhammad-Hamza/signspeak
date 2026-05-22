@@ -85,25 +85,78 @@ def build_tcn(frame_count, feature_size, num_classes, filters_list, kernel_size,
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
-    cfg = load_config()
-    dataset_path = Path(cfg["data"]["dataset_path"])
-    output_dir = Path(cfg["training"]["output_dir"])
+    cfg    = load_config()
+    hf_cfg = cfg.get("hf_dataset", {})
+    use_hf = hf_cfg.get("enabled", False)
+
+    t_cfg        = cfg["training"]
+    output_dir   = Path(t_cfg["output_dir"])
+    frame_count  = cfg["preprocessing"]["frame_count"]
+    feature_size = cfg["preprocessing"]["feature_size"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    frame_count = cfg["preprocessing"]["frame_count"]
-    feature_size = cfg["preprocessing"]["feature_size"]
-    num_classes = cfg["model"]["num_classes"]
+    # ── Resolve dataset & label-map paths ─────────────────────────────────────
+    if use_hf:
+        dataset_path   = Path(hf_cfg["dataset_path"])
+        label_map_path = Path(hf_cfg["label_map_out"])
+        print("=" * 60)
+        print("Dataset mode  : HF-ASL")
+        print(f"Dataset path  : {dataset_path}")
+        print(f"Label map     : {label_map_path}")
+        print("=" * 60)
+    else:
+        dataset_path   = Path(cfg["data"]["dataset_path"])
+        label_map_path = None          # MS-ASL uses config.model.num_classes directly
+        print("Dataset mode  : MS-ASL")
+        print(f"Dataset path  : {dataset_path}")
 
-    # Load data
+    # ── Load data ─────────────────────────────────────────────────────────────
+    if not dataset_path.exists():
+        print(f"\nERROR: Dataset not found: {dataset_path}")
+        if use_hf:
+            print("Run 02_build_dataset.py first (hf_dataset.enabled=true).")
+        else:
+            print("Run 02_build_dataset.py first.")
+        sys.exit(1)
+
     with h5py.File(dataset_path, "r") as hf:
         X_train = hf["X_train"][:]
         y_train = hf["y_train"][:]
-        X_val = hf["X_val"][:]
-        y_val = hf["y_val"][:]
+        X_val   = hf["X_val"][:]
+        y_val   = hf["y_val"][:]
 
-    print(f"Train: {X_train.shape}, Val: {X_val.shape}")
+    print(f"\nTrain: {X_train.shape},  Val: {X_val.shape}")
 
-    # Build model
+    # ── Guard: abort if splits are empty ─────────────────────────────────────
+    if len(X_train) == 0:
+        print(f"\nERROR: X_train is empty in: {dataset_path}")
+        print("Re-run 02_build_dataset.py to rebuild the dataset.")
+        sys.exit(1)
+    if len(X_val) == 0:
+        print(f"\nERROR: X_val is empty in: {dataset_path}")
+        print("Re-run 02_build_dataset.py to rebuild the dataset.")
+        sys.exit(1)
+
+    # ── Resolve num_classes ───────────────────────────────────────────────────
+    if use_hf and label_map_path and label_map_path.exists():
+        with open(label_map_path, encoding="utf-8") as f:
+            label_map = json.load(f)
+        num_classes_from_map = len(label_map)
+        cfg_num_classes      = cfg["model"].get("num_classes", num_classes_from_map)
+        if cfg_num_classes != num_classes_from_map:
+            print(
+                f"\n[WARNING] config model.num_classes={cfg_num_classes} "
+                f"does not match label_map length={num_classes_from_map}. "
+                "Using label_map length."
+            )
+        num_classes = num_classes_from_map
+        print(f"Classes       : {num_classes}  {list(label_map.values())}")
+    else:
+        num_classes = cfg["model"]["num_classes"]
+
+    print()
+
+    # ── Build model ───────────────────────────────────────────────────────────
     model = build_tcn(
         frame_count=frame_count,
         feature_size=feature_size,
@@ -114,7 +167,6 @@ def main():
     )
     model.summary()
 
-    t_cfg = cfg["training"]
     model.compile(
         optimizer=keras.optimizers.Adam(t_cfg["learning_rate"]),
         loss="sparse_categorical_crossentropy",
@@ -153,12 +205,17 @@ def main():
     # Save full model and history
     model.save(str(output_dir))
     with open(output_dir / "history.json", "w") as f:
-        json.dump({k: [float(v) for v in vals] for k, vals in history.history.items()}, f, indent=2)
+        json.dump(
+            {k: [float(v) for v in vals] for k, vals in history.history.items()},
+            f, indent=2,
+        )
 
     print(f"\n✓ Model saved: {output_dir}")
 
 
 if __name__ == "__main__":
-    tf.random.set_seed(load_config()["training"]["seed"])
-    np.random.seed(load_config()["training"]["seed"])
+    _cfg = load_config()
+    tf.random.set_seed(_cfg["training"]["seed"])
+    np.random.seed(_cfg["training"]["seed"])
     main()
+

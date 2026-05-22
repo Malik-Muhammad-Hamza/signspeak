@@ -31,16 +31,24 @@ import types
 sys.stdout.reconfigure(encoding="utf-8")
 
 # ── Windows workaround ────────────────────────────────────────────────────────
-# tensorflowjs imports tensorflow_decision_forests unconditionally.
-# On Windows the required inference.so binary is missing, causing a hard crash.
-# Inject a dummy module so the import succeeds without the native extension.
-if "tensorflow_decision_forests" not in sys.modules:
-    _stub = types.ModuleType("tensorflow_decision_forests")
-    # tensorflowjs only checks for the module's existence; no attributes needed.
-    sys.modules["tensorflow_decision_forests"] = _stub
+# tensorflowjs 4.10 imports tensorflow_decision_forests and tensorflow_hub
+# unconditionally, and uses jax.experimental.jax2tf.shape_poly.
+# None of these are available/functional on Windows — stub them all out.
 
-# Now it is safe to import tensorflowjs
-import tensorflowjs as tfjs          # noqa: E402  (after sys.modules patch)
+for _pkg in ["tensorflow_decision_forests", "tensorflow_hub"]:
+    if _pkg not in sys.modules:
+        sys.modules[_pkg] = types.ModuleType(_pkg)
+
+# shape_poly stub: jax2tf imports it at module level in tensorflowjs 4.10
+try:
+    import jax.experimental.jax2tf as _j2tf
+    if not hasattr(_j2tf, "shape_poly"):
+        _j2tf.shape_poly = types.ModuleType("shape_poly")
+except Exception:
+    pass
+
+# Now safe to import tensorflowjs
+import tensorflowjs as tfjs          # noqa: E402
 import tensorflow as tf              # noqa: E402
 
 from pathlib import Path
@@ -97,8 +105,22 @@ def main():
     print(f"  Input shape : {model.inputs[0].shape}")
     print(f"  Output shape: {model.outputs[0].shape}")
 
-    # ── Convert to TF.js ───────────────────────────────────────────────────────
-    print("\nConverting to TF.js …")
+    # ── Clear old model files before export ────────────────────────────────────
+    # Stale model.json / *.bin from a previous (possibly mis-shaped) export
+    # must be removed so TF.js doesn't load an incompatible cached version.
+    print("\nClearing old TF.js model files …")
+    cleared = 0
+    for old in list(tfjs_out.glob("model.json")) + list(tfjs_out.glob("*.bin")):
+        old.unlink()
+        print(f"  removed: {old.name}")
+        cleared += 1
+    if cleared == 0:
+        print("  (none found — output directory was clean)")
+
+    # ── Convert to TF.js LayersModel ──────────────────────────────────────────
+    # IMPORTANT: use save_keras_model() (LayersModel format — weightsManifest).
+    # Do NOT use tf.saved_model / graph conversion — residual Add shapes differ.
+    print("\nConverting to TF.js LayersModel …")
     quantize = cfg["export"].get("quantize", False)
     if quantize:
         tfjs.converters.save_keras_model(
@@ -110,10 +132,39 @@ def main():
 
     print(f"✓ TF.js model saved : {tfjs_out}")
 
-    # ── Copy label map ─────────────────────────────────────────────────────────
+    # ── Copy label map (always last — overwrite anything tfjs may have written) ─
     label_map_dst = tfjs_out / "label_map.json"
     shutil.copy(label_map_src, label_map_dst)
     print(f"✓ Label map copied  : {label_map_dst}")
+
+    # ── Patch model.json: causal → same (TF.js 4.x workaround) ───────────────
+    # TF.js ≥ 4.x has a bug where padding="causal" in dilated Conv1D computes
+    # the output length using valid-padding math:
+    #   32 frames, kernel=3, 2 conv layers → 28 frames
+    # This breaks the residual Add([28,64], [32,64]) at inference time.
+    # At fixed-length inference "same" and "causal" produce identical results,
+    # so we safely replace the serialised string in model.json.
+    model_json_path = tfjs_out / "model.json"
+    with open(model_json_path, encoding="utf-8") as fj:
+        model_json_text = fj.read()
+    causal_count = model_json_text.count('"causal"')
+    if causal_count:
+        model_json_text = model_json_text.replace('"causal"', '"same"')
+        with open(model_json_path, "w", encoding="utf-8") as fj:
+            fj.write(model_json_text)
+        print(f"✓ Patched {causal_count} causal→same in model.json (TF.js compat fix)")
+    else:
+        print("  model.json: no causal padding found (already patched or not needed)")
+
+    # ── Verify format ──────────────────────────────────────────────────────────
+    import json as _json
+    with open(model_json_path, encoding="utf-8") as fj:
+        meta = _json.load(fj)
+    print(f"\nmodel.json verification:")
+    print(f"  format     : {meta.get('format', '?')}")
+    print(f"  generatedBy: {meta.get('generatedBy', '?')}")
+    print(f"  convertedBy: {meta.get('convertedBy', '?')}")
+    assert meta.get("format") == "layers-model", "ERROR: model.json is not a LayersModel!"
 
     # ── Summary ────────────────────────────────────────────────────────────────
     files = list(tfjs_out.iterdir())

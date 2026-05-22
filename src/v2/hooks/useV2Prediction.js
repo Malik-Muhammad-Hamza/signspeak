@@ -65,11 +65,11 @@ export function useV2Prediction({
    * Run one inference pass.
    * @param {Float32Array} sequence  Flat [32 * 63] oldest-first sequence
    */
-  const runPrediction = useCallback((sequence) => {
+  const runPrediction = useCallback(async (sequence) => {
     if (!modelRef.current || !labelMapRef.current) return;
 
     try {
-      const { label, confidence: conf } = runInference(
+      const { label, confidence: conf } = await runInference(
         modelRef.current,
         labelMapRef.current,
         sequence,

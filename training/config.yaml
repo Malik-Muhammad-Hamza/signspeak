@@ -54,3 +54,19 @@ training:
 export:
   tfjs_output_dir: "../public/v2/model"
   quantize: false
+
+# ─── Hugging Face ASL Dataset ─────────────────────────────────────────────────
+hf_dataset:
+  enabled: true
+  repo_id: "akasheroor/American-Sign-Language-Dataset"
+  repo_type: "dataset"
+  root_dir: "C:/Web-Dev/Datasets/HF-ASL"
+  csv_filename: "Aslense Dataset.csv"
+  csv_path: "C:/Web-Dev/Datasets/HF-ASL/Aslense Dataset.csv"
+  selected_videos_dir: "C:/Web-Dev/Datasets/HF-ASL/selected_videos"
+  landmarks_dir: "C:/Web-Dev/Datasets/HF-ASL/landmarks"
+  dataset_path: "C:/Web-Dev/Datasets/HF-ASL/dataset.h5"
+  label_map_out: "C:/Web-Dev/Datasets/HF-ASL/label_map.json"
+  selected_classes: ["HELLO", "YES", "NO", "HELP", "THANKYOU"]
+  max_per_class: 30
+  manifest_path: "C:/Web-Dev/Datasets/HF-ASL/hf_manifest.csv"

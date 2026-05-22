@@ -54,3 +54,27 @@ training/.venv/
 *.h5
 *.hdf5
 *.keras
+# Python virtual environments
+training/.venv/
+training/.venv-export/
+.venv/
+venv/
+
+# Local export/temp
+export_upload/
+patch_model.js
+
+# Training outputs / generated models
+models/
+training/models/
+
+# ML datasets and generated data
+*.mp4
+*.webm
+*.mkv
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.keras
+C:/Web-Dev/Datasets/
