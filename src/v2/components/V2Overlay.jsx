@@ -15,7 +15,6 @@
  * smootherHistory{string[]}       Last N raw predictions (from smoother.getHistory())
  */
 
-import React from 'react';
 
 export default function V2Overlay({
   debug = false,

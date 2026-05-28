@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import { useRef, useState } from "react";
 import "./index.css";
 import WebcamFeed from "./components/WebcamFeed";
 import { useHandDetection } from "./hooks/useHandDetection";
@@ -288,7 +288,7 @@ function App() {
             </div>
             <div className="bg-gray-900 border border-gray-800 p-4 rounded-xl flex flex-col gap-2 shadow-sm">
               <span className="text-indigo-500 font-black text-2xl">5</span>
-              <p className="text-sm text-gray-300 leading-relaxed">The Web Speech API speaks completed words.</p>
+              <p className="text-sm text-gray-300 leading-relaxed">The Web Speech API speaks the sentence when you press Speak.</p>
             </div>
           </div>
         </div>

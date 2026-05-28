@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 
 const SUPPORTED_LETTERS = ['A', 'B', 'C', 'D', 'L', 'V', 'Y', 'I', 'O', 'W', 'M', 'Z', 'H', 'E', 'F', 'G'];
 

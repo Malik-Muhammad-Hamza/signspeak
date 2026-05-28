@@ -1,17 +1,7 @@
-import React, { useEffect, useState } from "react";
-
+// Toast.jsx — show a brief status message. No redundant `visible` state;
+// the component simply renders when message is non-empty.
 export default function Toast({ message }) {
-  const [visible, setVisible] = useState(false);
-
-  useEffect(() => {
-    if (message) {
-      setVisible(true);
-    } else {
-      setVisible(false);
-    }
-  }, [message]);
-
-  if (!visible || !message) return null;
+  if (!message) return null;
 
   return (
     <div

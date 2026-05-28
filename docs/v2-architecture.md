@@ -3,8 +3,11 @@
 ## Overview
 
 SignSpeak v2 replaces the rule-based Fingerpose v1 gesture detector with a
-**Temporal Convolutional Network (TCN)** trained on MS-ASL video data.
-V1 continues to function unchanged.
+**Temporal Convolutional Network (TCN)** trained on the Hugging Face ASL dataset
+(`akasheroor/American-Sign-Language-Dataset`). V1 continues to function unchanged.
+
+> **Prototype notice:** This module recognises a limited set of 10 ASL word signs.
+> It is NOT a full ASL translator.
 
 ---
 
@@ -14,7 +17,11 @@ V1 continues to function unchanged.
 ┌─────────────────────────────────────────────────┐
 │               OFFLINE TRAINING (Python)         │
 │                                                 │
-│  MS-ASL videos                                  │
+│  HF-ASL videos  (hf_dataset.enabled: true)      │
+│       │                                         │
+│       ▼                                         │
+│  00_download_hf_clips.py                        │
+│  HF repo → per-class MP4 clips                  │
 │       │                                         │
 │       ▼                                         │
 │  01_extract_landmarks.py                        │
@@ -28,12 +35,12 @@ V1 continues to function unchanged.
 │       │                                         │
 │       ▼                                         │
 │  03_train_tcn.py                                │
-│  TCN (dilated causal conv, residual)            │
+│  TCN (dilated same-padding Conv1D, residual)    │
 │  → models/tcn_v2/best.keras                     │
 │       │                                         │
 │       ▼                                         │
 │  04_evaluate.py                                 │
-│  Top-1/3 accuracy, confusion matrix             │
+│  Top-1/2 accuracy, per-class support, confusion │
 │       │                                         │
 │       ▼                                         │
 │  05_export_tfjs.py                              │
@@ -49,6 +56,7 @@ V1 continues to function unchanged.
 │       ▼                                         │
 │  useV2HandDetection                             │
 │  MediaPipe Hands → 21 landmarks/frame          │
+│  (fires onNoHand when hand disappears)          │
 │       │                                         │
 │       ▼                                         │
 │  landmarkNormalizer                             │
@@ -63,21 +71,29 @@ V1 continues to function unchanged.
 │  output: softmax [1, N_classes]                 │
 │       │                                         │
 │       ▼                                         │
-│  predictionSmoother (majority-vote, window=10)  │
-│  stable label only when ≥60 % agreement        │
+│  Commit-stability logic (in useV2Prediction):   │
+│  ┌── class confidence threshold                 │
+│  ├── top-2 margin guard                         │
+│  ├── confusion-pair extra margin                │
+│  ├── COMMIT_STABILITY_MS candidate timer        │
+│  ├── COMMIT_COOLDOWN_MS cooldown                │
+│  └── duplicate prevention + clearOnNoHand()    │
 │       │                                         │
 │       ▼                                         │
 │  V2PredictionBadge + V2Overlay (debug)          │
-│  text / TTS output (existing speechOutput.js)  │
+│  transcript, TTS (Web Speech API)              │
 └─────────────────────────────────────────────────┘
 ```
+
+> **Note:** `predictionSmoother.js` exists in `src/v2/utils/` but is **NOT** part of
+> the live runtime pipeline. The active commit logic is entirely in `useV2Prediction.js`.
 
 ---
 
 ## Normalisation Contract
 
 The **same algorithm** is implemented in both:
-- `training/` — `02_build_dataset.py` (`normalize()`)  
+- `training/` — `utils/normalizer.py` (`normalize_sequence_safe()`)
 - `src/v2/utils/landmarkNormalizer.js` (`normalizeLandmarks()`)
 
 **Steps**:
@@ -105,10 +121,16 @@ Output [1, N_classes]
 
 Each `ResidualTCNBlock`:
 ```
-x → Conv1D(causal, dilation) → BN → Dropout
-  → Conv1D(causal, dilation) → BN → Dropout
+x → Conv1D(same padding, dilation) → BN → SpatialDropout1D
+  → Conv1D(same padding, dilation) → BN → SpatialDropout1D
   → Add(skip_connection)
 ```
+
+**Padding note:** The model uses `padding="same"` in both training (`03_train_tcn.py`)
+and after TF.js export (`05_export_tfjs.py`). This was previously `"causal"` in training
+with a post-export patch; they are now aligned. If `05_export_tfjs.py` detects any
+`"causal"` layers (from a stale model checkpoint), it will warn and auto-patch, but the
+recommended fix is to **retrain** with the updated `03_train_tcn.py`.
 
 ---
 
@@ -135,16 +157,26 @@ The React app uses a **singleton loader** — model is loaded once per session a
 | Hook | `useHandDetection.js` | `useV2HandDetection.js` |
 | Training | N/A | `training/` Python pipeline |
 
-V2 components can be **imported optionally** in `App.jsx` behind a feature flag or
-a separate route without affecting the v1 render path at all.
+V2 is loaded lazily via `React.lazy` when `?v=2` is in the URL. V1 is unaffected.
 
 ---
 
-## Next Steps
+## No-Hand State Reset
 
-1. **Data prep**: Download MS-ASL, set `config.yaml` paths, run steps 1–2.
-2. **Training**: Run step 3 on GPU machine (or Colab).
-3. **Evaluation**: Run step 4, review confusion matrix.
-4. **Export**: Run step 5, verify `public/v2/model/` is populated.
-5. **Integration**: Import `useV2HandDetection` + `useV2Prediction` + `V2PredictionBadge` into `App.jsx` (behind a v2 toggle or new route).
-6. **Refinement**: Adjust `config.yaml` (num_classes, TCN depth) and retrain.
+When `useV2HandDetection` detects that the hand has left the frame (edge-triggered — fires once on the first empty frame after a detection), it calls `onNoHand()`.
+
+`V2Demo.jsx` passes `clearOnNoHand` from `useV2Prediction` as `onNoHand`. This:
+- Clears `liveLabel` and `liveConfidence` (UI returns to placeholder)
+- Clears the candidate stability state
+- Resets `lastCommittedLabel` so the same sign can be committed again
+
+---
+
+## Steps to Build a New Model
+
+1. **Data prep**: Set `hf_dataset.enabled: true` in `config.yaml`, run step 0 and 1.
+2. **Dataset build**: Run step 2.
+3. **Training**: Run step 3 on GPU machine (or Colab). Retraining is needed if you change padding or architecture.
+4. **Evaluation**: Run step 4, review confusion matrix and support warnings.
+5. **Export**: Run step 5 with `.venv-export`, verify `public/v2/model/` is populated.
+6. **Refinement**: Adjust `config.yaml` (max_per_class toward 80, augmentation flags) and retrain.

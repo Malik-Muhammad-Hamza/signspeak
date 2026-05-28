@@ -1,23 +1,22 @@
 """
 SignSpeak v2 — Step 2: Build Dataset
 =====================================
-Reads extracted .npy landmark files and their .label sidecars (written by
-01_extract_landmarks.py), applies:
-  - Uniform temporal sampling → exactly `frame_count` frames per clip
-  - Wrist-relative, scale-invariant normalisation (mirrors JS landmarkNormalizer)
-  - Compact integer label encoding from config.yaml classes (NOT original MS-ASL IDs)
+Reads extracted .npy landmark files and their .label sidecars,
+applies uniform temporal resampling, normalisation, and a stratified
+train/val/test split.
 
-Writes a single HDF5 dataset and label_map.json for use in training.
+Outputs:
+  dataset.h5         — X_train, y_train, X_val, y_val, X_test, y_test
+  label_map.json     — { "0": "HELLO", "1": "YES", … }
 
-Output:
-  processed/dataset.h5       — keys: X_train, y_train, X_val, y_val, X_test, y_test
-  processed/label_map.json   — { "0": "hello", "1": "yes", … }
+Normalisation note:
+  normalize_sequence_safe() MUST stay identical to landmarkNormalizer.js.
+  Both use: wrist-relative → max-abs scale → 1e-6 guard.
 
 Run:
-  python 02_build_dataset.py
+  cd C:\\Web-Dev\\Project\\signspeak
+  .\\training\\.venv\\Scripts\\python.exe training\\02_build_dataset.py
 """
-# NOTE: normalize_sequence and uniform_sample live in utils/ so changes
-# stay consistent with the JS counterpart (landmarkNormalizer.js).
 
 import json
 import sys
@@ -29,7 +28,7 @@ import numpy as np
 import yaml
 from tqdm import tqdm
 
-from utils.normalizer import normalize_sequence
+from utils.normalizer import normalize_sequence_safe
 from utils.frame_sampler import uniform_sample
 
 
@@ -39,270 +38,309 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
-def build_compact_label_map(classes: list[str]) -> tuple[dict[str, int], dict[str, str]]:
+def stratified_split(
+    X: np.ndarray,
+    y: np.ndarray,
+    val_frac: float,
+    test_frac: float,
+    seed: int,
+) -> tuple:
     """
-    Build deterministic compact label maps from config classes list.
-    Order in the YAML list defines the integer ID — never changed by alphabetical sort.
-
-    Returns
-    -------
-    label2idx : { "hello": 0, "yes": 1, … }
-    idx2label : { "0": "hello", "1": "yes", … }   ← JSON-serialisable
+    Split (X, y) into train/val/test preserving class distribution.
+    Every class appears in every split if it has >= 3 samples.
     """
-    label2idx = {cls.lower().strip(): i for i, cls in enumerate(classes)}
-    idx2label = {str(i): cls for cls, i in label2idx.items()}
-    return label2idx, idx2label
+    rng     = np.random.default_rng(seed)
+    classes = np.unique(y)
+
+    train_idx, val_idx, test_idx = [], [], []
+
+    for cls in classes:
+        idx = np.where(y == cls)[0]
+        rng.shuffle(idx)
+        n       = len(idx)
+        n_test  = max(1, int(np.floor(n * test_frac)))
+        n_val   = max(1, int(np.floor(n * val_frac)))
+        n_train = n - n_val - n_test
+
+        if n_train < 1:
+            # Not enough samples — put at least 1 in train
+            n_train = 1
+            n_val   = max(0, n - n_train - n_test)
+            n_test  = n - n_train - n_val
+
+        test_idx  .extend(idx[:n_test])
+        val_idx   .extend(idx[n_test:n_test + n_val])
+        train_idx .extend(idx[n_test + n_val:])
+
+    train_idx = np.array(train_idx)
+    val_idx   = np.array(val_idx)
+    test_idx  = np.array(test_idx)
+
+    rng.shuffle(train_idx)
+    rng.shuffle(val_idx)
+    rng.shuffle(test_idx)
+
+    return (
+        X[train_idx], y[train_idx],
+        X[val_idx],   y[val_idx],
+        X[test_idx],  y[test_idx],
+    )
 
 
-def load_split(
-    landmarks_dir: Path,
-    split: str,
-    label2idx: dict[str, int],
-    frame_count: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    split_dir = landmarks_dir / split
-    if not split_dir.exists():
-        return (
-            np.empty((0, frame_count, 63), dtype=np.float32),
-            np.empty(0, dtype=np.int32),
-        )
-
-    X, y = [], []
-    for label_dir in sorted(split_dir.iterdir()):
-        label_name = label_dir.name.lower().strip()
-        if label_name not in label2idx:
-            continue
-
-        for npy_file in tqdm(
-            sorted(label_dir.glob("*.npy")),
-            desc=f"{split}/{label_name}",
-            leave=False,
-        ):
-            # Prefer compact_label_id from .label sidecar (set by 01_extract_landmarks.py)
-            sidecar = npy_file.with_suffix(".label")
-            if sidecar.exists():
-                try:
-                    compact_id = int(sidecar.read_text().strip())
-                except ValueError:
-                    compact_id = label2idx[label_name]
-            else:
-                compact_id = label2idx[label_name]
-
-            raw     = np.load(npy_file)          # (T, 21, 3)
-            sampled = uniform_sample(raw, frame_count)
-            normed  = normalize_sequence(sampled)
-            if normed is None:
-                continue
-            X.append(normed)
-            y.append(compact_id)
-
-    if not X:
-        return (
-            np.empty((0, frame_count, 63), dtype=np.float32),
-            np.empty(0, dtype=np.int32),
-        )
-    return np.stack(X), np.array(y, dtype=np.int32)
+def _section_enabled(section: dict) -> bool:
+    return bool(section and section.get("enabled", False))
 
 
-def hf_load_all(
-    landmarks_dir: Path,
-    classes: list[str],
-    frame_count: int,
-) -> tuple[np.ndarray, np.ndarray, dict[str, int], dict[str, int]]:
+def _horizontal_flip_sequence(sequence: np.ndarray) -> np.ndarray:
+    """Mirror x-coordinates for a normalized (frames, 63) sequence."""
+    flipped = sequence.reshape(sequence.shape[0], 21, 3).copy()
+    flipped[:, :, 0] *= -1.0
+    return flipped.reshape(sequence.shape).astype(np.float32, copy=False)
+
+
+def _temporal_jitter_sequence(
+    sequence: np.ndarray,
+    rng: np.random.Generator,
+    max_speed_ratio: float,
+) -> np.ndarray:
+    """Randomly drop/duplicate frames, then sample back to the original length."""
+    frame_count = sequence.shape[0]
+    max_speed_ratio = max(1.0, float(max_speed_ratio))
+    ratio = rng.uniform(1.0 / max_speed_ratio, max_speed_ratio)
+    jittered_len = max(2, int(round(frame_count * ratio)))
+    jittered = uniform_sample(sequence, jittered_len)
+    return uniform_sample(jittered, frame_count).astype(np.float32, copy=False)
+
+
+def _landmark_jitter_sequence(
+    sequence: np.ndarray,
+    rng: np.random.Generator,
+    sigma: float,
+) -> np.ndarray:
+    """Add small Gaussian noise to a normalized (frames, 63) sequence."""
+    noise = rng.normal(0.0, max(0.0, float(sigma)), size=sequence.shape)
+    return (sequence + noise).astype(np.float32, copy=False)
+
+
+def _append_if_valid(
+    samples: list,
+    labels: list,
+    sequence: np.ndarray,
+    label: int,
+) -> bool:
+    if sequence.shape[-1] != 63 or not np.all(np.isfinite(sequence)):
+        return False
+    samples.append(sequence.astype(np.float32, copy=False))
+    labels.append(int(label))
+    return True
+
+
+def augment_training_set(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    aug_cfg: dict,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int]]:
     """
-    Load all .npy files from a flat HF landmark directory structure:
-      landmarks_dir/CLASS_NAME/*.npy
+    Apply configured augmentation to the training split only.
 
-    Returns
-    -------
-    X            : (N, frame_count, 63) float32
-    y            : (N,) int32
-    per_class_ok : {class_name: count}
-    per_class_skip: {class_name: count}
+    This prevents augmented near-duplicates from leaking into validation/test
+    splits and inflating evaluation metrics.
     """
-    X_all, y_all = [], []
-    per_ok: dict[str, int] = {}
-    per_skip: dict[str, int] = {}
+    counts = {
+        "landmark_jitter": 0,
+        "temporal_jitter": 0,
+        "horizontal_flip": 0,
+    }
 
-    for label_id, cls in enumerate(classes):
-        cls_dir = landmarks_dir / cls
-        per_ok[cls]   = 0
-        per_skip[cls] = 0
+    if not _section_enabled(aug_cfg) or len(X_train) == 0:
+        return X_train, y_train, counts
 
-        if not cls_dir.exists():
-            print(f"  [WARNING] Class directory not found: {cls_dir}")
-            continue
+    rng = np.random.default_rng(seed)
+    samples = [x.astype(np.float32, copy=False) for x in X_train]
+    labels = [int(y) for y in y_train]
 
-        npy_files = sorted(cls_dir.glob("*.npy"))
-        if not npy_files:
-            print(f"  [WARNING] No .npy files in: {cls_dir}")
-            continue
+    lj_cfg = aug_cfg.get("landmark_jitter", {})
+    tj_cfg = aug_cfg.get("temporal_jitter", {})
+    hf_cfg = aug_cfg.get("horizontal_flip", {})
 
-        # Minimum fraction of frames that must have real hand detections
-        min_valid_ratio = 0.3
+    for sequence, label in zip(X_train, y_train):
+        if _section_enabled(hf_cfg):
+            if _append_if_valid(samples, labels, _horizontal_flip_sequence(sequence), label):
+                counts["horizontal_flip"] += 1
 
-        for npy_file in tqdm(npy_files, desc=f"  {cls}", leave=False):
-            try:
-                raw = np.load(npy_file)           # expected: (T, 21, 3)
-            except Exception as e:
-                print(f"    [SKIP] Unreadable: {npy_file.name}  ({e})")
-                per_skip[cls] += 1
-                continue
+        if _section_enabled(tj_cfg):
+            copies = max(0, int(tj_cfg.get("copies", 1)))
+            max_speed_ratio = float(tj_cfg.get("max_speed_ratio", 1.2))
+            for _ in range(copies):
+                augmented = _temporal_jitter_sequence(sequence, rng, max_speed_ratio)
+                if _append_if_valid(samples, labels, augmented, label):
+                    counts["temporal_jitter"] += 1
 
-            # Validate shape before sampling
-            if raw.ndim != 3 or raw.shape[1:] != (21, 3):
-                print(f"    [SKIP] Bad shape {raw.shape}: {npy_file.name}")
-                per_skip[cls] += 1
-                continue
+        if _section_enabled(lj_cfg):
+            copies = max(0, int(lj_cfg.get("copies", 1)))
+            sigma = float(lj_cfg.get("sigma", 0.02))
+            for _ in range(copies):
+                augmented = _landmark_jitter_sequence(sequence, rng, sigma)
+                if _append_if_valid(samples, labels, augmented, label):
+                    counts["landmark_jitter"] += 1
 
-            # Filter out zero-landmark frames (frames where no hand was detected)
-            # A zero frame has max absolute value == 0 across all 63 values
-            frame_sums = np.abs(raw).reshape(len(raw), -1).max(axis=1)  # (T,)
-            valid_mask = frame_sums > 0
-            valid_frames = raw[valid_mask]
-
-            frac_valid = valid_mask.mean()
-            if frac_valid < min_valid_ratio or len(valid_frames) == 0:
-                per_skip[cls] += 1
-                continue
-
-            sampled = uniform_sample(valid_frames, frame_count)  # (frame_count, 21, 3)
-
-            # Normalise frame-by-frame; skip any frame that is still degenerate
-            normed_frames = []
-            for frame in sampled:
-                n = None
-                wrist = frame[0]
-                shifted = frame - wrist
-                flat = shifted.flatten().astype(np.float32)
-                max_abs = np.abs(flat).max()
-                if max_abs > 0:
-                    n = flat / max_abs
-                if n is None:
-                    n = np.zeros(63, dtype=np.float32)   # keep shape; rare edge case
-                normed_frames.append(n)
-
-            normed = np.stack(normed_frames)   # (frame_count, 63)
-
-            if normed.shape != (frame_count, 63):
-                print(f"    [SKIP] Unexpected normalised shape {normed.shape}: {npy_file.name}")
-                per_skip[cls] += 1
-                continue
-
-            X_all.append(normed)
-            y_all.append(label_id)
-            per_ok[cls] += 1
-
-    if not X_all:
-        return (
-            np.empty((0, frame_count, 63), dtype=np.float32),
-            np.empty(0, dtype=np.int32),
-            per_ok, per_skip,
-        )
-    return np.stack(X_all).astype(np.float32), np.array(y_all, dtype=np.int32), per_ok, per_skip
+    return (
+        np.stack(samples).astype(np.float32),
+        np.array(labels, dtype=np.int32),
+        counts,
+    )
 
 
 def main():
-    cfg        = load_config()
+    cfg         = load_config()
     frame_count = cfg["preprocessing"]["frame_count"]
     hf          = cfg.get("hf_dataset", {})
     use_hf      = hf.get("enabled", False)
+    t_cfg       = cfg.get("training", {})
+    seed        = t_cfg.get("seed", 42)
+    val_split   = float(t_cfg.get("val_split",  0.10))
+    test_split  = float(t_cfg.get("test_split", 0.10))
+    aug_cfg     = cfg.get("augmentation", {})
 
     if use_hf:
-        # ── HF-ASL mode ───────────────────────────────────────────────────────
         landmarks_dir = Path(hf["landmarks_dir"])
         dataset_path  = Path(hf["dataset_path"])
         label_map_out = Path(hf["label_map_out"])
         classes       = [c.strip() for c in hf.get("selected_classes", [])]
-        val_split     = float(cfg.get("training", {}).get("val_split", 0.1))
-        test_split    = float(cfg.get("training", {}).get("test_split", 0.1))
-
         if not classes:
-            raise ValueError("hf_dataset.selected_classes is empty in config.yaml.")
+            raise ValueError("hf_dataset.selected_classes is empty.")
 
         print("=" * 60)
-        print("Dataset mode     : HF-ASL")
+        print("Dataset mode     : HF-ASL  (stratified split)")
         print(f"Landmarks dir    : {landmarks_dir}")
         print(f"Dataset output   : {dataset_path}")
-        print(f"Label map output : {label_map_out}")
-        print(f"Classes          : {classes}")
         print(f"Val split        : {val_split}  |  Test split: {test_split}")
+        print(f"Seed             : {seed}")
         print("=" * 60)
-        print()
 
-        # Build label map preserving config order, original case
         label2idx = {cls: i for i, cls in enumerate(classes)}
         idx2label = {str(i): cls for cls, i in label2idx.items()}
-        print(f"Label map ({len(label2idx)} classes): {label2idx}")
+        print(f"\nLabel map: {label2idx}\n")
 
         # Load all samples
-        print("\nLoading landmark files …")
-        X_all, y_all, per_ok, per_skip = hf_load_all(landmarks_dir, classes, frame_count)
-        N = len(X_all)
+        X_all, y_all     = [], []
+        per_ok: dict[str, int]   = {}
+        per_skip: dict[str, int] = {}
 
-        print(f"\nSamples per class:")
+        for label_id, cls in enumerate(classes):
+            cls_dir = landmarks_dir / cls
+            per_ok[cls]   = 0
+            per_skip[cls] = 0
+
+            if not cls_dir.exists():
+                print(f"  [WARNING] Missing dir: {cls_dir}")
+                continue
+
+            npy_files = sorted(cls_dir.glob("*.npy"))
+            if not npy_files:
+                print(f"  [WARNING] No .npy files in: {cls_dir}")
+                continue
+
+            for npy_file in tqdm(npy_files, desc=f"  {cls}", leave=False):
+                try:
+                    raw = np.load(npy_file)   # (T, 21, 3)
+                except Exception as e:
+                    print(f"    [SKIP] Unreadable: {npy_file.name} ({e})")
+                    per_skip[cls] += 1
+                    continue
+
+                if raw.ndim != 3 or raw.shape[1:] != (21, 3):
+                    print(f"    [SKIP] Bad shape {raw.shape}: {npy_file.name}")
+                    per_skip[cls] += 1
+                    continue
+
+                sampled = uniform_sample(raw, frame_count)       # (frame_count, 21, 3)
+                normed  = normalize_sequence_safe(sampled)       # (frame_count, 63) or None
+                if normed is None:
+                    per_skip[cls] += 1
+                    continue
+                if not np.all(np.isfinite(normed)):
+                    per_skip[cls] += 1
+                    continue
+
+                X_all.append(normed)
+                y_all.append(label_id)
+                per_ok[cls] += 1
+
+        print("\nPer-class load summary:")
+        print(f"  {'Class':<22} {'Loaded':>7}  {'Skipped':>8}")
+        print(f"  {'-'*22} {'-'*7}  {'-'*8}")
         for cls in classes:
-            print(f"  {cls:<20} loaded={per_ok[cls]}  skipped={per_skip[cls]}")
-        print(f"\nTotal usable samples: {N}")
+            ok   = per_ok.get(cls, 0)
+            sk   = per_skip.get(cls, 0)
+            flag = "  ⚠ LOW" if ok < 10 else ""
+            print(f"  {cls:<22} {ok:>7}  {sk:>8}{flag}")
 
+        N = len(X_all)
+        print(f"\nTotal usable samples: {N}")
         if N == 0:
-            print("ERROR: No usable samples found. Check landmarks directory.")
+            print("ERROR: No usable samples. Check landmarks dir.")
             sys.exit(1)
 
-        # Shuffle reproducibly
-        rng = np.random.default_rng(cfg.get("training", {}).get("seed", 42))
-        idx = rng.permutation(N)
-        X_all = X_all[idx]
-        y_all = y_all[idx]
+        X_all = np.stack(X_all).astype(np.float32)
+        y_all = np.array(y_all, dtype=np.int32)
 
-        # Train / val / test split
-        n_test = max(1, int(N * test_split))
-        n_val  = max(1, int(N * val_split))
-        n_train = N - n_val - n_test
+        # Stratified split
+        X_train, y_train, X_val, y_val, X_test, y_test = stratified_split(
+            X_all, y_all, val_split, test_split, seed
+        )
+        X_train, y_train, augmentation_counts = augment_training_set(
+            X_train, y_train, aug_cfg, seed
+        )
+        total_augmented = sum(augmentation_counts.values())
 
-        X_test,  y_test  = X_all[:n_test],          y_all[:n_test]
-        X_val,   y_val   = X_all[n_test:n_test+n_val], y_all[n_test:n_test+n_val]
-        X_train, y_train = X_all[n_test+n_val:],    y_all[n_test+n_val:]
+        print(f"\nSplit sizes (stratified):")
+        print(f"  train : {len(X_train)}")
+        print(f"  val   : {len(X_val)}")
+        print(f"  test  : {len(X_test)}")
+        if _section_enabled(aug_cfg):
+            print("\nTraining augmentation:")
+            for name, count in augmentation_counts.items():
+                print(f"  {name:<18}: {count}")
+            print(f"  total added       : {total_augmented}")
 
-        print(f"\nSplit sizes:")
-        print(f"  train : {len(X_train)} samples")
-        print(f"  val   : {len(X_val)} samples")
-        print(f"  test  : {len(X_test)} samples")
+        # Per-class distribution check
+        print("\nPer-class counts in each split:")
+        print(f"  {'Class':<22} {'train':>6}  {'val':>6}  {'test':>6}")
+        print(f"  {'-'*22} {'-'*6}  {'-'*6}  {'-'*6}")
+        for cls_id, cls in enumerate(classes):
+            tr = int((y_train == cls_id).sum())
+            vl = int((y_val   == cls_id).sum())
+            te = int((y_test  == cls_id).sum())
+            missing = " ⚠ missing in val!" if vl == 0 else (" ⚠ missing in test!" if te == 0 else "")
+            print(f"  {cls:<22} {tr:>6}  {vl:>6}  {te:>6}{missing}")
 
-        # Save label map
         label_map_out.parent.mkdir(parents=True, exist_ok=True)
         with open(label_map_out, "w", encoding="utf-8") as f:
             json.dump(idx2label, f, indent=2)
         print(f"\n✓ Label map saved: {label_map_out}")
 
-        # Save HDF5
         dataset_path.parent.mkdir(parents=True, exist_ok=True)
-        with h5py.File(dataset_path, "w") as hf_file:
-            hf_file.create_dataset("X_train", data=X_train, compression="gzip")
-            hf_file.create_dataset("y_train", data=y_train, compression="gzip")
-            hf_file.create_dataset("X_val",   data=X_val,   compression="gzip")
-            hf_file.create_dataset("y_val",   data=y_val,   compression="gzip")
-            hf_file.create_dataset("X_test",  data=X_test,  compression="gzip")
-            hf_file.create_dataset("y_test",  data=y_test,  compression="gzip")
-
+        with h5py.File(dataset_path, "w") as hdf:
+            hdf.create_dataset("X_train", data=X_train, compression="gzip")
+            hdf.create_dataset("y_train", data=y_train, compression="gzip")
+            hdf.create_dataset("X_val",   data=X_val,   compression="gzip")
+            hdf.create_dataset("y_val",   data=y_val,   compression="gzip")
+            hdf.create_dataset("X_test",  data=X_test,  compression="gzip")
+            hdf.create_dataset("y_test",  data=y_test,  compression="gzip")
         print(f"✓ Dataset saved  : {dataset_path}")
-        print()
-        print(f"  X_train: {X_train.shape}  y_train: {y_train.shape}")
-        print(f"  X_val  : {X_val.shape}    y_val  : {y_val.shape}")
-        print(f"  X_test : {X_test.shape}   y_test : {y_test.shape}")
 
     else:
-        # ── MS-ASL mode (original behaviour, unchanged) ───────────────────────
+        # MS-ASL mode (unchanged)
+        from utils.normalizer import normalize_sequence
+
         landmarks_dir = Path(cfg["data"]["landmarks_dir"])
         dataset_path  = Path(cfg["data"]["dataset_path"])
         label_map_out = Path(cfg["data"]["label_map_out"])
         classes       = cfg.get("classes", [])
-
-        if not classes:
-            raise ValueError("No 'classes' list found in config.yaml.")
-
-        label2idx, idx2label = build_compact_label_map(classes)
-        print(f"Label map ({len(label2idx)} classes): {label2idx}")
+        label2idx     = {cls.lower().strip(): i for i, cls in enumerate(classes)}
+        idx2label     = {str(i): cls for cls, i in label2idx.items()}
 
         label_map_out.parent.mkdir(parents=True, exist_ok=True)
         with open(label_map_out, "w") as f:
@@ -310,16 +348,33 @@ def main():
         print(f"✓ Label map saved: {label_map_out}")
 
         dataset_path.parent.mkdir(parents=True, exist_ok=True)
-        with h5py.File(dataset_path, "w") as hf_file:
+        with h5py.File(dataset_path, "w") as hdf:
             for split in ("train", "val", "test"):
-                X, y = load_split(landmarks_dir, split, label2idx, frame_count)
-                hf_file.create_dataset(f"X_{split}", data=X, compression="gzip")
-                hf_file.create_dataset(f"y_{split}", data=y, compression="gzip")
-                print(f"  {split}: {len(X)} samples")
+                split_dir = landmarks_dir / split
+                X, y = [], []
+                if split_dir.exists():
+                    for label_dir in sorted(split_dir.iterdir()):
+                        lname = label_dir.name.lower().strip()
+                        if lname not in label2idx:
+                            continue
+                        for npy_file in tqdm(sorted(label_dir.glob("*.npy")), desc=f"{split}/{lname}", leave=False):
+                            sidecar = npy_file.with_suffix(".label")
+                            cid = int(sidecar.read_text().strip()) if sidecar.exists() else label2idx[lname]
+                            raw = np.load(npy_file)
+                            sampled = uniform_sample(raw, frame_count)
+                            normed  = normalize_sequence(sampled)
+                            if normed is None:
+                                continue
+                            X.append(normed)
+                            y.append(cid)
+                Xa = np.stack(X).astype(np.float32) if X else np.empty((0, frame_count, 63), dtype=np.float32)
+                ya = np.array(y, dtype=np.int32)    if y else np.empty(0, dtype=np.int32)
+                hdf.create_dataset(f"X_{split}", data=Xa, compression="gzip")
+                hdf.create_dataset(f"y_{split}", data=ya, compression="gzip")
+                print(f"  {split}: {len(Xa)} samples")
 
         print(f"\n✓ Dataset saved: {dataset_path}")
 
 
 if __name__ == "__main__":
     main()
-

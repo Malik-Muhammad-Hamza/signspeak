@@ -8,16 +8,16 @@ This directory contains all v2-specific React source files.
 ```
 src/v2/
 ├── hooks/
-│   ├── useV2HandDetection.js     # MediaPipe → 32-frame landmark buffer
-│   └── useV2Prediction.js        # TF.js model inference + smoothing
+│   ├── useV2HandDetection.js     # MediaPipe → 32-frame landmark buffer + onNoHand signal
+│   └── useV2Prediction.js        # TF.js model inference + commit-stability logic
 ├── components/
 │   ├── V2Overlay.jsx             # Debug overlay (landmarks + confidence)
 │   └── V2PredictionBadge.jsx     # Live prediction display
 ├── utils/
 │   ├── landmarkNormalizer.js     # Wrist-relative, scale-invariant normalize
 │   ├── frameBuffer.js            # Sliding-window 32-frame buffer
-│   ├── predictionSmoother.js     # Majority-vote smoothing over N frames
-│   └── modelLoader.js           # TF.js model load + warm-up
+│   ├── predictionSmoother.js     # ⚠ NOT in live pipeline — reference only
+│   └── modelLoader.js            # TF.js model load + warm-up (tensor-safe)
 └── README.md                     # This file
 ```
 
@@ -28,20 +28,40 @@ Webcam
   → MediaPipe Hands (21 landmarks × 3)
   → landmarkNormalizer  (63 floats per frame, wrist-relative + scale-normalised)
   → frameBuffer         (accumulate → [32, 63] tensor)
-  → TF.js TCN model     (softmax over N classes)
-  → predictionSmoother  (majority-vote over last K predictions)
-  → UI output           (V2PredictionBadge, transcript, TTS)
+  → TF.js TCN model     (softmax over 10 classes)
+  → commit-stability logic in useV2Prediction.js
+      ├── class confidence threshold
+      ├── top-2 margin guard
+      ├── confusion-pair extra margin
+      ├── COMMIT_STABILITY_MS candidate timer (400 ms)
+      ├── COMMIT_COOLDOWN_MS cooldown (700 ms)
+      └── duplicate prevention + clearOnNoHand()
+  → UI output  (V2PredictionBadge, transcript, TTS)
 ```
+
+> `predictionSmoother.js` is **not** part of this flow. The commit logic lives
+> entirely in `useV2Prediction.js`.
+
+## No-hand reset
+
+`useV2HandDetection` fires `onNoHand()` (edge-triggered) when the hand disappears.
+`V2Demo.jsx` passes `clearOnNoHand` from `useV2Prediction` as this callback.
+This resets `liveLabel`, confidence, candidate state, and `lastCommittedLabel`
+so the same sign can be committed again after re-raising the hand.
 
 ## Model contract
 
 | Property | Value |
 |---|---|
 | Input shape | `[1, 32, 63]` — batch × frames × features |
-| Output shape | `[1, N]` — softmax probabilities |
+| Output shape | `[1, 10]` — softmax probabilities over 10 classes |
 | Features | 21 landmarks × (x, y, z) wrist-relative + scale-normalised |
 | Frame rate | ~30 fps target; buffer slides by 1 frame |
 | Label map | loaded from `public/v2/model/label_map.json` |
+
+## Supported labels (10 classes)
+
+HELLO · YES · NO · HELP · THANK YOU · PLEASE · SORRY · GOOD · STOP · WATER
 
 ## Model assets (populated after training)
 

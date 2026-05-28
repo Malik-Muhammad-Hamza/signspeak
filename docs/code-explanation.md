@@ -76,7 +76,7 @@ The actual project folder structure is organized as follows:
     - **Clear:** Wipes the current word and sentence clean.
     - **Copy Text:** Copies the generated sentence to the clipboard.
     - **Download Transcript:** Saves the output as a `.txt` file.
-    - **Speak Again:** Replays the audio for the current text.
+    - **Speak:** Reads the current text aloud.
 - **Modals:** Conditionally renders the `HowToUseModal` based on state.
 
 ## 6. Components Explanation
@@ -105,8 +105,8 @@ The actual project folder structure is organized as follows:
 
 ### useWordBuilder.js
 - **Purpose:** Translates raw frame-by-frame letter detections into meaningful words and sentences using time delays.
-- **Stable Detection:** It tracks the `detectedLetter`. It uses a delay timer (around 1.2 seconds) to ensure the user is holding the sign steadily before officially adding it to the `currentWord`. This prevents the app from spamming letters instantly.
-- **Sentence Formation:** It utilizes a "no-hand" delay. If the detector sees no letter for about 2 seconds, the hook assumes the user has finished signing the word. It then finalizes the word, adds it to the `fullSentence`, and calls `speakWord()` to trigger the audio.
+- **Stable Detection:** It tracks the `detectedLetter`. It uses a delay timer (around 1 second) to ensure the user is holding the sign steadily before officially adding it to the `currentWord`. This prevents the app from spamming letters instantly.
+- **Sentence Formation:** It uses a "no-hand" delay. If the detector sees no letter for about 1.5 seconds, the hook assumes the user has finished signing the word and adds it to the `fullSentence`. The Speak control triggers audio.
 - **Controls:** It provides functions like `deleteLetter` and `clearAll` to manage mistakes.
 
 ### useKeyboardDemo.js
@@ -161,8 +161,8 @@ The actual project folder structure is organized as follows:
 
 ## 10. Timing Logic Explained
 The app relies on time delays to interpret continuous video into structured text. 
-- **Stable Detection Delay:** If the app accepted every detected letter immediately, a 30-frames-per-second webcam would output "AAAAAAA" in a fraction of a second. By waiting ~1.2 seconds, the app guarantees the user is intentionally holding a sign.
-- **No-Hand Delay:** Because there is no "spacebar" in static sign language, the app uses the absence of a hand to signify the end of a word. Dropping your hand for 2 seconds tells the app to finalize the text and trigger the speech output.
+- **Stable Detection Delay:** If the app accepted every detected letter immediately, a 30-frames-per-second webcam would output "AAAAAAA" in a fraction of a second. By waiting about 1 second, the app guarantees the user is intentionally holding a sign.
+- **No-Hand Delay:** Because there is no "spacebar" in static sign language, the app uses the absence of a hand to signify the end of a word. Dropping your hand for about 1.5 seconds tells the app to finalize the text; the Speak control then reads the generated text aloud.
 
 ## 11. C vs O Improvement Explanation
 The letters "C" and "O" are visually very similar—both require curving all fingers. Standard curl detection often confuses them. 

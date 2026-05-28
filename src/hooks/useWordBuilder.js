@@ -6,7 +6,9 @@ const NO_HAND_WORD_DELAY_MS = 1500;   // fallback: complete word after hand disa
 const NEXT_WORD_COOLDOWN_MS = 1200;   // prevent rapid re-firing of open-palm action
 
 export const useWordBuilder = (detectedLetter) => {
-  const [currentLetter, setCurrentLetter] = useState(null);
+  // currentLetter is tracked in a ref (not state) — it's only used for
+  // comparison inside the gesture effect, not rendered to the DOM.
+  const currentLetterRef = useRef(null);
   const [currentWord, setCurrentWord]     = useState("");
   const [fullSentence, setFullSentence]   = useState("");
   const [progress, setProgress]           = useState(0);
@@ -49,9 +51,9 @@ export const useWordBuilder = (detectedLetter) => {
 
   // ─── Main gesture effect ──────────────────────────────────────────────────
   useEffect(() => {
-    if (detectedLetter === currentLetter) return;
+    if (detectedLetter === currentLetterRef.current) return;
 
-    setCurrentLetter(detectedLetter);
+    currentLetterRef.current = detectedLetter;
     setProgress(0);
     progressValueRef.current = 0;
 
@@ -115,7 +117,7 @@ export const useWordBuilder = (detectedLetter) => {
         if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
       }, LETTER_HOLD_MS);
     }
-  }, [detectedLetter, currentLetter, currentWord, finalizeWord]);
+  }, [detectedLetter, currentWord, finalizeWord]);
 
   // ─── Cleanup on unmount ──────────────────────────────────────────────────
   useEffect(() => {
@@ -153,7 +155,7 @@ export const useWordBuilder = (detectedLetter) => {
   };
 
   return {
-    currentLetter,
+    // currentLetter intentionally omitted — stored as ref, not state
     currentWord,
     fullSentence,
     progress,

@@ -19,7 +19,7 @@ https://github.com/Malik-Muhammad-Hamza/signspeak
 - Word formation using stable sign timing
 - Sentence formation after no-hand delay
 - Text-to-speech output
-- Delete, Clear, and Speak Again controls
+- Delete, Clear, and Speak controls
 - How to Use popup/modal
 - Supported signs guide
 - Responsive UI
@@ -37,15 +37,15 @@ A, B, C, D, E, F, G, H, I, L, M, O, V, W, Y, Z
 4. A stable detected sign is accepted after a short delay.
 5. Accepted letters form the current word.
 6. When no hand/sign is detected for a short period, the word is completed.
-7. The browser Web Speech API speaks the generated text.
+7. The browser Web Speech API speaks the generated text when the user presses Speak.
 
 ## Timing and Word Formation
-- A sign must remain stable for about 1.2 seconds before being added.
+- A sign must remain stable for **1 second** before being added.
 - This prevents accidental repeated letters.
-- When no hand/sign is detected for about 2 seconds, the current word is completed.
+- When no hand/sign is detected for **1.5 seconds**, the current word is completed.
 - Delete removes the last letter.
 - Clear resets the text.
-- Speak Again repeats the generated text.
+- Speak reads the generated text aloud.
 
 ## Gesture Guide
 - **A:** Make a fist with all fingers curled. Keep the thumb along the side/outside of the fist, slightly exposed.

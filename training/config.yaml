@@ -11,8 +11,6 @@ data:
   label_map_out:  "C:/Web-Dev/Datasets/MS-ASL/processed/label_map.json"
 
 # ─── Selected classes ─────────────────────────────────────────────────────────
-# Only these words are downloaded and trained. compact_label_id matches list order:
-#   hello=0, yes=1, no=2, help=3, good=4
 classes:
   - hello
   - "yes"
@@ -22,7 +20,6 @@ classes:
 
 # ─── Download ─────────────────────────────────────────────────────────────────
 download:
-  # Set low (e.g. 5–10) for an initial smoke-test download. Set null for all.
   max_per_class_per_split: 10
 
 # ─── Preprocessing ───────────────────────────────────────────────────────────
@@ -30,10 +27,11 @@ preprocessing:
   frame_count: 32
   feature_size: 63
   min_clip_frames: 8
+  min_valid_frame_ratio: 0.40
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 model:
-  num_classes: 5
+  num_classes: 10
   tcn_filters: [64, 128, 256]
   tcn_kernel_size: 3
   dropout: 0.3
@@ -41,12 +39,13 @@ model:
 
 # ─── Training ────────────────────────────────────────────────────────────────
 training:
-  epochs: 60
+  epochs: 80
   batch_size: 32
   learning_rate: 1.0e-3
   lr_patience: 8
-  early_stop_patience: 15
-  val_split: 0.1
+  early_stop_patience: 20
+  val_split: 0.10
+  test_split: 0.10
   seed: 42
   output_dir: "models/tcn_v2"
 
@@ -67,6 +66,64 @@ hf_dataset:
   landmarks_dir: "C:/Web-Dev/Datasets/HF-ASL/landmarks"
   dataset_path: "C:/Web-Dev/Datasets/HF-ASL/dataset.h5"
   label_map_out: "C:/Web-Dev/Datasets/HF-ASL/label_map.json"
-  selected_classes: ["HELLO", "YES", "NO", "HELP", "THANKYOU"]
-  max_per_class: 30
   manifest_path: "C:/Web-Dev/Datasets/HF-ASL/hf_manifest.csv"
+
+  selected_classes:
+    - "HELLO"
+    - "YES"
+    - "NO"
+    - "HELP"
+    - "THANKYOU"
+    - "PLEASE"
+    - "SORRY"
+    - "GOOD"
+    - "STOP"
+    - "WATER"
+
+  # ── Balancing ───────────────────────────────────────────────────────────────
+  # max_per_class controls how many clips per class enter the pipeline.
+  # Increase toward 80 to improve accuracy — especially for weak classes:
+  #   GOOD, STOP, HELLO, THANKYOU have the fewest HF-ASL clips available.
+  # Classes with fewer videos than this cap will use all available clips.
+  max_per_class: 50
+  balance_strategy: "cap"
+
+  # ── Class aliases ─────────────────────────────────────────────────────────
+  class_aliases:
+    THANKYOU:
+      - "THANKYOU"
+      - "THANK YOU"
+      - "THANKS"
+      - "THANK"
+    HELLO:
+      - "HELLO"
+      - "HI"
+    SORRY:
+      - "SORRY"
+      - "APOLOGIZE"
+
+# ─── Data Augmentation (applied to the training split during dataset build, off by default) ────────────────────
+# Enable these to improve generalisation for weak/low-data classes.
+# All defaults are conservative; enable one at a time and evaluate.
+augmentation:
+  enabled: false                # master switch — set true to enable any augmentation
+
+  # Landmark coordinate jitter: add Gaussian noise to each x/y/z coordinate.
+  # Simulates slight signer-position variance. Recommended sigma: 0.01–0.03.
+  landmark_jitter:
+    enabled: false
+    sigma: 0.02                 # std-dev of Gaussian noise (in normalised units)
+    copies: 2                   # augmented copies to generate per sample
+
+  # Temporal jitter: randomly drop/duplicate normalized frames to simulate speed variance.
+  # Applied after the train/val/test split to avoid validation/test leakage.
+  temporal_jitter:
+    enabled: false
+    max_speed_ratio: 1.20       # max temporal stretch/compress factor
+    copies: 1
+
+  # Horizontal flip (handedness normalisation): mirror x-coordinates.
+  # Only safe if the dataset does not mix left/right hand signers for the same class.
+  # Set enabled: true only after verifying your dataset is consistently right-hand.
+  horizontal_flip:
+    enabled: false

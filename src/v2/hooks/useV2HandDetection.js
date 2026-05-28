@@ -5,6 +5,9 @@
  * frames into the sliding-window buffer.  Calls `onSequenceReady` each time
  * the buffer is full so the caller can run TCN inference.
  *
+ * Also exposes `onNoHand` callback so the caller can clear prediction state
+ * when the hand leaves the frame — preventing stale liveLabel in the UI.
+ *
  * MediaPipe Hands is loaded on-demand via dynamic <script> injection so that
  * v1 users are never affected (the CDN scripts are NOT in index.html).
  *
@@ -13,6 +16,7 @@
  * webcamRef       React ref from react-webcam (access via .current.video)
  * canvasRef       React ref to an optional debug <canvas>
  * onSequenceReady (sequenceFloat32Array) => void
+ * onNoHand        () => void  — called once when landmarks disappear
  * frameCount      32 (default) — must match model training config
  * enabled         boolean — pause detection without unmounting
  */
@@ -56,6 +60,7 @@ async function loadMediaPipeHands() {
  * @param {React.RefObject} opts.webcamRef     react-webcam ref (exposes .video)
  * @param {React.RefObject} [opts.canvasRef]   optional debug canvas
  * @param {function}        opts.onSequenceReady
+ * @param {function}        [opts.onNoHand]    called once when hand disappears
  * @param {number}          [opts.frameCount=32]
  * @param {boolean}         [opts.enabled=true]
  */
@@ -63,6 +68,7 @@ export function useV2HandDetection({
   webcamRef,
   canvasRef,
   onSequenceReady,
+  onNoHand,
   frameCount = DEFAULT_FRAME_COUNT,
   enabled = true,
 }) {
@@ -70,10 +76,14 @@ export function useV2HandDetection({
   const bufferRef    = useRef(createFrameBuffer(frameCount, FEATURE_SIZE));
   const animFrameRef = useRef(null);
   const runningRef   = useRef(false);
+  // Track whether the previous frame had a hand — avoids firing onNoHand every frame
+  const hadHandRef   = useRef(false);
 
-  // Stable callback reference — avoids restarting the detection loop
-  const callbackRef = useRef(onSequenceReady);
+  // Stable callback references — avoids restarting the detection loop
+  const callbackRef  = useRef(onSequenceReady);
+  const noHandRef    = useRef(onNoHand);
   useEffect(() => { callbackRef.current = onSequenceReady; }, [onSequenceReady]);
+  useEffect(() => { noHandRef.current   = onNoHand;        }, [onNoHand]);
 
   // ── Result handler ──────────────────────────────────────────────────────────
   const handleResults = useCallback((results) => {
@@ -83,8 +93,15 @@ export function useV2HandDetection({
 
     if (!landmarks) {
       bufferRef.current.reset();
+      // Fire onNoHand only on the first frame without a hand (edge-trigger)
+      if (hadHandRef.current) {
+        hadHandRef.current = false;
+        noHandRef.current?.();
+      }
       return;
     }
+
+    hadHandRef.current = true;
 
     const vector = normalizeLandmarks(landmarks);
     if (!vector) return;
@@ -146,16 +163,21 @@ export function useV2HandDetection({
         console.error('[useV2HandDetection] MediaPipe load failed:', err);
       });
 
+    // Capture ref values used in cleanup to avoid stale-ref warnings
+    const buffer = bufferRef.current;
+
     return () => {
       cancelled = true;
       runningRef.current = false;
       cancelAnimationFrame(animFrameRef.current);
       handsRef.current?.close?.();
-      bufferRef.current.reset();
+      buffer.reset();
+      hadHandRef.current = false;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);   // handleResults is stable; webcamRef ref-object is stable
 }
+
 
 // ── Minimal debug canvas renderer ─────────────────────────────────────────────
 function drawDebugCanvas(canvas, results) {
