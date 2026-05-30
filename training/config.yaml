@@ -25,13 +25,13 @@ download:
 # ─── Preprocessing ───────────────────────────────────────────────────────────
 preprocessing:
   frame_count: 32
-  feature_size: 63
+  feature_size: 126
   min_clip_frames: 8
   min_valid_frame_ratio: 0.40
 
 # ─── Model ───────────────────────────────────────────────────────────────────
 model:
-  num_classes: 10
+  num_classes: 20    # must match len(hf_dataset.selected_classes)
   tcn_filters: [64, 128, 256]
   tcn_kernel_size: 3
   dropout: 0.3
@@ -79,51 +79,86 @@ hf_dataset:
     - "GOOD"
     - "STOP"
     - "WATER"
+    - "ME"
+    - "YOU"
+    - "WANT"
+    - "NEED"
+    - "FOOD"
+    - "MORE"
+    - "BATHROOM"
+    - "HOME"
+    - "SICK"
+    - "WHERE"
 
   # ── Balancing ───────────────────────────────────────────────────────────────
   # max_per_class controls how many clips per class enter the pipeline.
   # Increase toward 80 to improve accuracy — especially for weak classes:
   #   GOOD, STOP, HELLO, THANKYOU have the fewest HF-ASL clips available.
   # Classes with fewer videos than this cap will use all available clips.
-  max_per_class: 50
+  max_per_class: 80
   balance_strategy: "cap"
 
   # ── Class aliases ─────────────────────────────────────────────────────────
+  # Each key is a canonical class from selected_classes.
+  # Values list dataset label variants that should map to the canonical class.
+  # The canonical name itself MUST appear in the list to match its own entries.
   class_aliases:
     THANKYOU:
       - "THANKYOU"
       - "THANK YOU"
-      - "THANKS"
-      - "THANK"
-    HELLO:
-      - "HELLO"
-      - "HI"
-    SORRY:
-      - "SORRY"
-      - "APOLOGIZE"
+    ME:
+      - "ME"
+      - "I"
+    FOOD:
+      - "FOOD"
+      - "EAT"
+    BATHROOM:
+      - "BATHROOM"
+      - "TOILET"
+    HOME:
+      - "HOME"
+    SICK:
+      - "SICK"
+    STOP:
+      - "STOP"
+
+  # ── Rejected aliases (pending manual sample review) ──────────────────────
+  # U → YOU:   REJECTED — U may represent the alphabet letter U, not the
+  #            pronoun YOU. Use only YOU unless manual review confirms
+  #            U-labelled videos are actually YOU signs.
+  # HOUSE → HOME: REJECTED — HOUSE and HOME may be visually/sign-
+  #            linguistically different depending on the source. Use only
+  #            HOME unless manual review confirms they are compatible.
+
+  # ── Display labels (internal label → UI string) ──────────────────────────
+  display_labels:
+    ME:       "I / ME"
+    FOOD:     "FOOD / EAT"
+    BATHROOM: "BATHROOM"
+    THANKYOU: "THANK YOU"
 
 # ─── Data Augmentation (applied to the training split during dataset build, off by default) ────────────────────
 # Enable these to improve generalisation for weak/low-data classes.
 # All defaults are conservative; enable one at a time and evaluate.
 augmentation:
-  enabled: false                # master switch — set true to enable any augmentation
+  enabled: true                 # master switch — set true to enable any augmentation
 
   # Landmark coordinate jitter: add Gaussian noise to each x/y/z coordinate.
   # Simulates slight signer-position variance. Recommended sigma: 0.01–0.03.
   landmark_jitter:
-    enabled: false
-    sigma: 0.02                 # std-dev of Gaussian noise (in normalised units)
-    copies: 2                   # augmented copies to generate per sample
+    enabled: true
+    sigma: 0.015                # std-dev of Gaussian noise (in normalised units)
+    copies: 1                   # augmented copies to generate per sample
 
   # Temporal jitter: randomly drop/duplicate normalized frames to simulate speed variance.
   # Applied after the train/val/test split to avoid validation/test leakage.
   temporal_jitter:
-    enabled: false
-    max_speed_ratio: 1.20       # max temporal stretch/compress factor
+    enabled: true
+    max_speed_ratio: 1.15       # max temporal stretch/compress factor
     copies: 1
 
   # Horizontal flip (handedness normalisation): mirror x-coordinates.
   # Only safe if the dataset does not mix left/right hand signers for the same class.
   # Set enabled: true only after verifying your dataset is consistently right-hand.
   horizontal_flip:
-    enabled: false
+    enabled: true
