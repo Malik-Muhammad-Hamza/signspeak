@@ -1,124 +1,116 @@
 /**
- * SignSpeak v2 — useV2Prediction
+ * SignSpeak v2 - useV2Prediction
  *
- * Handles model inference + commit-stability logic.
+ * Handles model inference and the commit-stability gate.
  *
- * Pipeline
- * --------
- *  Webcam → [sequence] → runInference → raw probabilities
- *    → confidence + top-2 margin check
- *    → candidate stability window (COMMIT_STABILITY_MS)
- *    → cooldown guard (COMMIT_COOLDOWN_MS)
- *    → duplicate prevention
- *    → commit
- *
- * No-hand signal
- * --------------
- *  clearOnNoHand() — call when the hand leaves the frame.
- *  Resets: liveLabel, liveConfidence, candidate state, lastCommittedLabel,
- *  uncertain flag. This allows the same sign to be re-committed after the
- *  hand is lowered and raised again.
- *
- * Returned state
- * --------------
- *  liveLabel       — top-1 prediction right now (updates every frame)
- *  liveConfidence  — confidence of liveLabel
- *  commitStatus    — "Detecting…" | "Stabilizing…" | "Committed: X" | "Uncertain gesture…"
- *  committedLabel  — the label that just committed (or null)
- *  uncertain       — true when confused pair detected
- *  uncertainMessage
- *  modelReady / error
+ * Pipeline:
+ *   Webcam -> sequence -> runInference -> raw probabilities
+ *   -> live prediction state
+ *   -> confidence / top-2 margin checks
+ *   -> candidate stability timer
+ *   -> cooldown / duplicate-hold checks
+ *   -> onCommit(label)
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { loadV2Model, runInference } from '../utils/modelLoader';
 
-// ── Timing ────────────────────────────────────────────────────────────────────
-/** Min ms between GPU inference calls (prevents saturation). */
 const PREDICTION_INTERVAL_MS = 100;
+const COMMIT_STABILITY_MS = 300;
+const COMMIT_COOLDOWN_MS = 500;
 
-/** A label must stay top-1 for this long before it is committed. */
-const COMMIT_STABILITY_MS = 400;
-
-/** After committing, block new commits for this long. */
-const COMMIT_COOLDOWN_MS = 700;
-
-// ── Confidence thresholds ─────────────────────────────────────────────────────
-/** Default minimum top-1 confidence to allow a commit. */
-const DEFAULT_CONFIDENCE_THRESHOLD = 0.78;
-
-/** Per-class overrides — higher for commonly confused signs. */
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.68;
 const CLASS_THRESHOLDS = {
-  THANKYOU: 0.84,
-  GOOD:     0.84,
-  HELLO:    0.82,
+  THANKYOU: 0.72,
+  HOME: 0.70,
+  STOP: 0.70,
+  SICK: 0.70,
+  GOOD: 0.78,
+  ME: 0.72,
+  HELLO: 0.75,
+  DEFAULT: DEFAULT_CONFIDENCE_THRESHOLD,
 };
 
-/** Minimum gap between top-1 and top-2 confidence. */
-const MIN_TOP2_MARGIN = 0.18;
+const MIN_TOP2_MARGIN = 0.10;
+const CONFUSION_PAIR_MARGIN = 0.18;
+const DEBUG_COMMIT = false;
 
-// ── Confusion pairs ───────────────────────────────────────────────────────────
-/**
- * When top-1 and top-2 belong to a confused pair AND gap < CONFUSION_PAIR_MARGIN,
- * we show an uncertain warning and do NOT commit.
- */
-const CONFUSION_PAIR_MARGIN = 0.22;
+const DISPLAY_LABELS = {
+  THANKYOU: 'THANK YOU',
+  ME: 'I / ME',
+  FOOD: 'FOOD / EAT',
+};
 
-const CONFUSED_PAIRS = [
-  new Set(['HELLO',   'THANKYOU']),
-  new Set(['GOOD',    'THANKYOU']),
-  new Set(['PLEASE',  'SORRY']),
+const TWO_HAND_REQUIRED_SIGNS = new Set([
+  'HELP',
+  'MORE',
+]);
+
+const CORRECTION_PAIRS = [
+  new Set(['GOOD', 'THANKYOU']),
+  new Set(['HELLO', 'THANKYOU']),
+  new Set(['PLEASE', 'SORRY']),
+  new Set(['ME', 'GOOD']),
+  new Set(['ME', 'THANKYOU']),
+  new Set(['STOP', 'GOOD']),
+  new Set(['STOP', 'THANKYOU']),
+  new Set(['NEED', 'MORE']),
+  new Set(['WANT', 'HELP']),
+  new Set(['HOME', 'BATHROOM']),
+  new Set(['SICK', 'ME']),
+  new Set(['SICK', 'WHERE']),
 ];
 
-function isConfusedPair(a, b) {
-  return CONFUSED_PAIRS.some(pair => pair.has(a) && pair.has(b));
+function isCorrectionPair(a, b) {
+  return CORRECTION_PAIRS.some(pair => pair.has(a) && pair.has(b));
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────────
 function getThreshold(label) {
-  return CLASS_THRESHOLDS[label] ?? DEFAULT_CONFIDENCE_THRESHOLD;
+  return CLASS_THRESHOLDS[label] ?? CLASS_THRESHOLDS.DEFAULT;
 }
 
+function debugCommit(event, details) {
+  if (!DEBUG_COMMIT) return;
+  console.debug('[V2 commit]', event, details);
+}
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-export function useV2Prediction() {
-  // Model
+export function useV2Prediction({ onCommit } = {}) {
   const [modelReady, setModelReady] = useState(false);
-  const [error,      setError]      = useState(null);
+  const [error, setError] = useState(null);
 
-  // Live prediction (updates every inference frame)
-  const [liveLabel,      setLiveLabel]      = useState(null);
+  const [liveLabel, setLiveLabel] = useState(null);
   const [liveConfidence, setLiveConfidence] = useState(0);
+  const [topPredictions, setTopPredictions] = useState([]);
 
-  // Commit state
-  const [committedLabel,   setCommittedLabel]   = useState(null);
-  const [commitStatus,     setCommitStatus]     = useState('Detecting…');
-  const [uncertain,        setUncertain]        = useState(false);
+  const [commitStatus, setCommitStatus] = useState('Detecting…');
+  const [uncertain, setUncertain] = useState(false);
   const [uncertainMessage, setUncertainMessage] = useState(null);
+  const [correctionOptions, setCorrectionOptions] = useState([]);
 
-  // Refs
-  const modelRef    = useRef(null);
+  const modelRef = useRef(null);
   const labelMapRef = useRef(null);
 
-  // Throttle / concurrency
-  const lastRunRef  = useRef(0);
-  const runningRef  = useRef(false);
+  const lastRunRef = useRef(0);
+  const runningRef = useRef(false);
 
-  // Stability tracking
-  const candidateLabelRef     = useRef(null);
+  const candidateLabelRef = useRef(null);
   const candidateStartedAtRef = useRef(0);
-
-  // Commit tracking
   const lastCommittedLabelRef = useRef(null);
-  const lastCommitTimeRef     = useRef(0);
+  const lastCommitTimeRef = useRef(0);
+  const canCommitRef = useRef(true);
+  const onCommitRef = useRef(onCommit);
 
-  // ── Load model ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
+
   useEffect(() => {
     let cancelled = false;
+
     loadV2Model()
       .then(({ model, labelMap }) => {
         if (cancelled) return;
-        modelRef.current    = model;
+        modelRef.current = model;
         labelMapRef.current = labelMap;
         setModelReady(true);
       })
@@ -127,18 +119,45 @@ export function useV2Prediction() {
         console.error('[useV2Prediction] Model load failed:', err);
         setError(err.message ?? String(err));
       });
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // ── runPrediction ──────────────────────────────────────────────────────────
-  const runPrediction = useCallback(async (sequence) => {
+  const resetCandidate = useCallback(() => {
+    candidateLabelRef.current = null;
+    candidateStartedAtRef.current = 0;
+  }, []);
+
+  const markPredictionInvalid = useCallback(() => {
+    resetCandidate();
+    lastCommittedLabelRef.current = null;
+    canCommitRef.current = true;
+  }, [resetCandidate]);
+
+  const commitLabel = useCallback((label, source = 'auto') => {
+    if (!label) return;
+
+    lastCommittedLabelRef.current = label;
+    lastCommitTimeRef.current = Date.now();
+    resetCandidate();
+    canCommitRef.current = false;
+
+    setUncertain(false);
+    setUncertainMessage(null);
+    setCorrectionOptions([]);
+    setCommitStatus(`Committed: ${DISPLAY_LABELS[label] || label}`);
+    onCommitRef.current?.(label);
+
+    debugCommit('committed', { label, source });
+  }, [resetCandidate]);
+
+  const runPrediction = useCallback(async (sequence, handsDetectedCount = 0) => {
     if (!modelRef.current || !labelMapRef.current) return;
 
-    // Throttle
     const now = Date.now();
     if (now - lastRunRef.current < PREDICTION_INTERVAL_MS) return;
-
-    // Concurrency guard
     if (runningRef.current) return;
 
     lastRunRef.current = now;
@@ -148,162 +167,277 @@ export function useV2Prediction() {
       const { rawLabel, confidence, topPredictions: top } =
         await runInference(modelRef.current, labelMapRef.current, sequence);
 
-      // ── Update live state ───────────────────────────────────────────────────
       setLiveLabel(rawLabel);
       setLiveConfidence(confidence);
+      setTopPredictions(top);
 
       const top1 = top[0] ?? { label: null, confidence: 0 };
       const top2 = top[1] ?? { label: null, confidence: 0 };
       const margin = top1.confidence - top2.confidence;
-
-      // ── 1. Confidence threshold ─────────────────────────────────────────────
       const threshold = getThreshold(top1.label);
-      if (top1.confidence < threshold) {
-        // Not confident enough — reset candidate
-        candidateLabelRef.current     = null;
-        candidateStartedAtRef.current = 0;
+      const elapsed = top1.label === candidateLabelRef.current && candidateStartedAtRef.current
+        ? now - candidateStartedAtRef.current
+        : 0;
+      const visibleHands = Math.min(Math.max(Number(handsDetectedCount) || 0, 0), 2);
+      const cooldownRemaining = Math.max(
+        0,
+        COMMIT_COOLDOWN_MS - (now - lastCommitTimeRef.current),
+      );
+
+      debugCommit('frame', {
+        label: top1.label,
+        confidence: top1.confidence,
+        candidateLabel: candidateLabelRef.current,
+        elapsedStabilityMs: elapsed,
+        threshold,
+        top2Label: top2.label,
+        top2Confidence: top2.confidence,
+        top2Margin: margin,
+        cooldownRemainingMs: cooldownRemaining,
+        handsDetectedCount: visibleHands,
+        canCommit: canCommitRef.current,
+        lastCommittedLabel: lastCommittedLabelRef.current,
+      });
+
+      if (!top1.label || top1.confidence < threshold) {
+        markPredictionInvalid();
         setUncertain(false);
         setUncertainMessage(null);
+        setCorrectionOptions([]);
         setCommitStatus('Detecting…');
+        debugCommit('blocked', {
+          reason: 'below_threshold',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: 0,
+          top2Margin: margin,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
         return;
       }
 
-      // ── 2. Top-2 margin check ───────────────────────────────────────────────
-      if (margin < MIN_TOP2_MARGIN) {
-        candidateLabelRef.current     = null;
-        candidateStartedAtRef.current = 0;
-
-        // Check if this is a known confusion pair
-        if (top2.label && isConfusedPair(top1.label, top2.label) && margin < CONFUSION_PAIR_MARGIN) {
-          const msg = `Uncertain gesture — complete the sign clearly`;
-          setUncertain(true);
-          setUncertainMessage(msg);
-          setCommitStatus(msg);
-        } else {
-          setUncertain(false);
-          setUncertainMessage(null);
-          setCommitStatus('Detecting…');
-        }
-        return;
-      }
-
-      // ── 3. Confusion-pair extra gap check ───────────────────────────────────
-      if (top2.label && isConfusedPair(top1.label, top2.label) && margin < CONFUSION_PAIR_MARGIN) {
-        candidateLabelRef.current     = null;
-        candidateStartedAtRef.current = 0;
-        const msg = `Uncertain gesture — complete the sign clearly`;
+      if (top2.label && isCorrectionPair(top1.label, top2.label) && margin < CONFUSION_PAIR_MARGIN) {
+        resetCandidate();
+        const msg = 'Uncertain gesture — choose correction';
         setUncertain(true);
         setUncertainMessage(msg);
+        setCorrectionOptions([
+          { label: top1.label, confidence: top1.confidence },
+          { label: top2.label, confidence: top2.confidence },
+        ]);
         setCommitStatus(msg);
+        debugCommit('blocked', {
+          reason: 'correction_pair_margin',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: 0,
+          top2Label: top2.label,
+          top2Margin: margin,
+          requiredMargin: CONFUSION_PAIR_MARGIN,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
         return;
       }
 
-      // Passed all checks — clear uncertain
+      if (margin < MIN_TOP2_MARGIN) {
+        markPredictionInvalid();
+        setUncertain(false);
+        setUncertainMessage(null);
+        setCorrectionOptions([]);
+        setCommitStatus('Detecting…');
+        debugCommit('blocked', {
+          reason: 'low_top2_margin',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: 0,
+          top2Label: top2.label,
+          top2Margin: margin,
+          requiredMargin: MIN_TOP2_MARGIN,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
+        return;
+      }
+
       setUncertain(false);
       setUncertainMessage(null);
+      setCorrectionOptions([]);
 
-      // ── 4. Candidate stability window ──────────────────────────────────────
+      if (TWO_HAND_REQUIRED_SIGNS.has(top1.label) && visibleHands < 2) {
+        markPredictionInvalid();
+        const msg = `${DISPLAY_LABELS[top1.label] || top1.label} requires two hands`;
+        setUncertain(true);
+        setUncertainMessage(msg);
+        setCorrectionOptions([]);
+        setCommitStatus(msg);
+        debugCommit('blocked', {
+          reason: 'two_hands_required',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: 0,
+          top2Margin: margin,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
+        return;
+      }
+
+      if (!canCommitRef.current && top1.label === lastCommittedLabelRef.current) {
+        setCommitStatus(`Committed: ${DISPLAY_LABELS[top1.label] || top1.label}`);
+        debugCommit('blocked', {
+          reason: 'duplicate_hold',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: elapsed,
+          top2Margin: margin,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
+        return;
+      }
+
       if (top1.label !== candidateLabelRef.current) {
-        // New label — start stability timer
-        candidateLabelRef.current     = top1.label;
+        candidateLabelRef.current = top1.label;
         candidateStartedAtRef.current = now;
         setCommitStatus('Stabilizing…');
+        debugCommit('blocked', {
+          reason: 'candidate_started',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: 0,
+          top2Margin: margin,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
         return;
       }
 
-      const elapsed = now - candidateStartedAtRef.current;
-      if (elapsed < COMMIT_STABILITY_MS) {
+      const stableElapsed = now - candidateStartedAtRef.current;
+      if (stableElapsed < COMMIT_STABILITY_MS) {
         setCommitStatus('Stabilizing…');
+        debugCommit('blocked', {
+          reason: 'stability_window',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: stableElapsed,
+          requiredStabilityMs: COMMIT_STABILITY_MS,
+          top2Margin: margin,
+          cooldownRemainingMs: cooldownRemaining,
+          handsDetectedCount: visibleHands,
+        });
         return;
       }
 
-      // ── 5. Cooldown check ──────────────────────────────────────────────────
       const sinceLast = now - lastCommitTimeRef.current;
       if (sinceLast < COMMIT_COOLDOWN_MS) {
+        debugCommit('blocked', {
+          reason: 'cooldown',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: stableElapsed,
+          top2Margin: margin,
+          cooldownRemainingMs: COMMIT_COOLDOWN_MS - sinceLast,
+          handsDetectedCount: visibleHands,
+        });
         return;
       }
 
-      // ── 6. Duplicate prevention ────────────────────────────────────────────
       if (top1.label === lastCommittedLabelRef.current) {
+        debugCommit('blocked', {
+          reason: 'duplicate_label',
+          label: top1.label,
+          confidence: top1.confidence,
+          threshold,
+          candidateLabel: candidateLabelRef.current,
+          elapsedStabilityMs: stableElapsed,
+          top2Margin: margin,
+          cooldownRemainingMs: 0,
+          handsDetectedCount: visibleHands,
+        });
         return;
       }
 
-      // ── ✅ Commit ───────────────────────────────────────────────────────────
-      lastCommittedLabelRef.current = top1.label;
-      lastCommitTimeRef.current     = now;
-
-      // Reset candidate so same sign can't re-trigger without dropping
-      candidateLabelRef.current     = null;
-      candidateStartedAtRef.current = 0;
-
-      setCommittedLabel(top1.label);
-      setCommitStatus(`Committed: ${top1.label === 'THANKYOU' ? 'THANK YOU' : top1.label}`);
-
-      // Reset committedLabel after one render cycle (it's a one-shot event)
-      setTimeout(() => setCommittedLabel(null), 0);
-
+      commitLabel(top1.label, 'auto');
     } catch (err) {
       console.error('[useV2Prediction] Inference error:', err);
     } finally {
       runningRef.current = false;
     }
-  }, []);
+  }, [commitLabel, markPredictionInvalid, resetCandidate]);
 
-  // ── clearOnNoHand — called when the hand leaves the frame ─────────────────
-  /**
-   * Resets all live prediction state so the UI returns to the placeholder/
-   * detecting state.  Also clears lastCommittedLabel so the same sign can
-   * be committed again after the hand is raised.
-   */
+  const commitCorrection = useCallback((label) => {
+    commitLabel(label, 'manual_correction');
+  }, [commitLabel]);
+
   const clearOnNoHand = useCallback(() => {
     setLiveLabel(null);
     setLiveConfidence(0);
+    setTopPredictions([]);
     setUncertain(false);
     setUncertainMessage(null);
+    setCorrectionOptions([]);
     setCommitStatus('Detecting…');
-    candidateLabelRef.current     = null;
-    candidateStartedAtRef.current = 0;
-    lastCommittedLabelRef.current = null;  // allow same sign to recommit
-  }, []);
+    resetCandidate();
+    lastCommittedLabelRef.current = null;
+    canCommitRef.current = true;
+    debugCommit('reset', { reason: 'no_hand' });
+  }, [resetCandidate]);
 
-  // ── Reset (after clearAll) ─────────────────────────────────────────────────
   const resetPrediction = useCallback(() => {
     setLiveLabel(null);
     setLiveConfidence(0);
-    setCommittedLabel(null);
+    setTopPredictions([]);
     setCommitStatus('Detecting…');
     setUncertain(false);
     setUncertainMessage(null);
-    candidateLabelRef.current     = null;
-    candidateStartedAtRef.current = 0;
+    setCorrectionOptions([]);
+    resetCandidate();
     lastCommittedLabelRef.current = null;
-    lastCommitTimeRef.current     = 0;
-  }, []);
+    lastCommitTimeRef.current = 0;
+    canCommitRef.current = true;
+    debugCommit('reset', { reason: 'manual_reset' });
+  }, [resetCandidate]);
 
   /**
    * @deprecated Use clearOnNoHand instead. Kept for API compatibility.
-   * Allows the same sign to be committed again next time.
    */
   const clearLastCommitted = useCallback(() => {
     lastCommittedLabelRef.current = null;
+    canCommitRef.current = true;
   }, []);
 
   return {
-    // Model
     modelReady,
     error,
-    // Live prediction
     liveLabel,
     liveConfidence,
-    // Commit state
-    committedLabel,
+    topPredictions,
     commitStatus,
     uncertain,
     uncertainMessage,
-    // Actions
+    correctionOptions,
+    commitCorrection,
     runPrediction,
     resetPrediction,
     clearOnNoHand,
-    clearLastCommitted, // deprecated — kept for backwards compat
+    clearLastCommitted,
   };
 }
