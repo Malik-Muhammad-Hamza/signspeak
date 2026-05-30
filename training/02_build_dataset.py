@@ -28,7 +28,7 @@ import numpy as np
 import yaml
 from tqdm import tqdm
 
-from utils.normalizer import normalize_sequence_safe
+from utils.normalizer import TWO_HAND_FEATURE_SIZE, normalize_sequence_safe
 from utils.frame_sampler import uniform_sample
 
 
@@ -91,8 +91,14 @@ def _section_enabled(section: dict) -> bool:
     return bool(section and section.get("enabled", False))
 
 
-def _horizontal_flip_sequence(sequence: np.ndarray) -> np.ndarray:
-    """Mirror x-coordinates for a normalized (frames, 63) sequence."""
+def _horizontal_flip_sequence(sequence: np.ndarray, feature_size: int) -> np.ndarray:
+    """Mirror x-coordinates for a normalized sequence."""
+    if feature_size == TWO_HAND_FEATURE_SIZE:
+        flipped = sequence.reshape(sequence.shape[0], 2, 21, 3).copy()
+        flipped[:, :, :, 0] *= -1.0
+        flipped = flipped[:, [1, 0], :, :]
+        return flipped.reshape(sequence.shape).astype(np.float32, copy=False)
+
     flipped = sequence.reshape(sequence.shape[0], 21, 3).copy()
     flipped[:, :, 0] *= -1.0
     return flipped.reshape(sequence.shape).astype(np.float32, copy=False)
@@ -117,7 +123,7 @@ def _landmark_jitter_sequence(
     rng: np.random.Generator,
     sigma: float,
 ) -> np.ndarray:
-    """Add small Gaussian noise to a normalized (frames, 63) sequence."""
+    """Add small Gaussian noise to a normalized sequence."""
     noise = rng.normal(0.0, max(0.0, float(sigma)), size=sequence.shape)
     return (sequence + noise).astype(np.float32, copy=False)
 
@@ -127,8 +133,9 @@ def _append_if_valid(
     labels: list,
     sequence: np.ndarray,
     label: int,
+    feature_size: int,
 ) -> bool:
-    if sequence.shape[-1] != 63 or not np.all(np.isfinite(sequence)):
+    if sequence.shape[-1] != feature_size or not np.all(np.isfinite(sequence)):
         return False
     samples.append(sequence.astype(np.float32, copy=False))
     labels.append(int(label))
@@ -166,7 +173,7 @@ def augment_training_set(
 
     for sequence, label in zip(X_train, y_train):
         if _section_enabled(hf_cfg):
-            if _append_if_valid(samples, labels, _horizontal_flip_sequence(sequence), label):
+            if _append_if_valid(samples, labels, _horizontal_flip_sequence(sequence, X_train.shape[-1]), label, X_train.shape[-1]):
                 counts["horizontal_flip"] += 1
 
         if _section_enabled(tj_cfg):
@@ -174,7 +181,7 @@ def augment_training_set(
             max_speed_ratio = float(tj_cfg.get("max_speed_ratio", 1.2))
             for _ in range(copies):
                 augmented = _temporal_jitter_sequence(sequence, rng, max_speed_ratio)
-                if _append_if_valid(samples, labels, augmented, label):
+                if _append_if_valid(samples, labels, augmented, label, X_train.shape[-1]):
                     counts["temporal_jitter"] += 1
 
         if _section_enabled(lj_cfg):
@@ -182,7 +189,7 @@ def augment_training_set(
             sigma = float(lj_cfg.get("sigma", 0.02))
             for _ in range(copies):
                 augmented = _landmark_jitter_sequence(sequence, rng, sigma)
-                if _append_if_valid(samples, labels, augmented, label):
+                if _append_if_valid(samples, labels, augmented, label, X_train.shape[-1]):
                     counts["landmark_jitter"] += 1
 
     return (
@@ -195,6 +202,7 @@ def augment_training_set(
 def main():
     cfg         = load_config()
     frame_count = cfg["preprocessing"]["frame_count"]
+    feature_size = int(cfg["preprocessing"].get("feature_size", TWO_HAND_FEATURE_SIZE))
     hf          = cfg.get("hf_dataset", {})
     use_hf      = hf.get("enabled", False)
     t_cfg       = cfg.get("training", {})
@@ -215,6 +223,7 @@ def main():
         print("Dataset mode     : HF-ASL  (stratified split)")
         print(f"Landmarks dir    : {landmarks_dir}")
         print(f"Dataset output   : {dataset_path}")
+        print(f"Expected shape   : [{frame_count}, {feature_size}]")
         print(f"Val split        : {val_split}  |  Test split: {test_split}")
         print(f"Seed             : {seed}")
         print("=" * 60)
@@ -244,20 +253,24 @@ def main():
 
             for npy_file in tqdm(npy_files, desc=f"  {cls}", leave=False):
                 try:
-                    raw = np.load(npy_file)   # (T, 21, 3)
+                    raw = np.load(npy_file)
                 except Exception as e:
                     print(f"    [SKIP] Unreadable: {npy_file.name} ({e})")
                     per_skip[cls] += 1
                     continue
 
-                if raw.ndim != 3 or raw.shape[1:] != (21, 3):
+                if raw.ndim != 2 or raw.shape[1] != feature_size:
                     print(f"    [SKIP] Bad shape {raw.shape}: {npy_file.name}")
                     per_skip[cls] += 1
                     continue
 
-                sampled = uniform_sample(raw, frame_count)       # (frame_count, 21, 3)
-                normed  = normalize_sequence_safe(sampled)       # (frame_count, 63) or None
+                sampled = uniform_sample(raw, frame_count)
+                normed  = normalize_sequence_safe(sampled, feature_size=feature_size)
                 if normed is None:
+                    per_skip[cls] += 1
+                    continue
+                if normed.shape != (frame_count, feature_size):
+                    print(f"    [SKIP] Bad sampled shape {normed.shape}: {npy_file.name}")
                     per_skip[cls] += 1
                     continue
                 if not np.all(np.isfinite(normed)):
@@ -284,6 +297,9 @@ def main():
             sys.exit(1)
 
         X_all = np.stack(X_all).astype(np.float32)
+        if X_all.shape[1:] != (frame_count, feature_size):
+            print(f"ERROR: Dataset shape mismatch: got {X_all.shape[1:]}, expected {(frame_count, feature_size)}")
+            sys.exit(1)
         y_all = np.array(y_all, dtype=np.int32)
 
         # Stratified split
@@ -333,8 +349,6 @@ def main():
 
     else:
         # MS-ASL mode (unchanged)
-        from utils.normalizer import normalize_sequence
-
         landmarks_dir = Path(cfg["data"]["landmarks_dir"])
         dataset_path  = Path(cfg["data"]["dataset_path"])
         label_map_out = Path(cfg["data"]["label_map_out"])
@@ -361,13 +375,16 @@ def main():
                             sidecar = npy_file.with_suffix(".label")
                             cid = int(sidecar.read_text().strip()) if sidecar.exists() else label2idx[lname]
                             raw = np.load(npy_file)
+                            if raw.ndim != 2 or raw.shape[1] != feature_size:
+                                print(f"    [SKIP] Bad shape {raw.shape}: {npy_file.name}")
+                                continue
                             sampled = uniform_sample(raw, frame_count)
-                            normed  = normalize_sequence(sampled)
+                            normed  = normalize_sequence_safe(sampled, feature_size=feature_size)
                             if normed is None:
                                 continue
                             X.append(normed)
                             y.append(cid)
-                Xa = np.stack(X).astype(np.float32) if X else np.empty((0, frame_count, 63), dtype=np.float32)
+                Xa = np.stack(X).astype(np.float32) if X else np.empty((0, frame_count, feature_size), dtype=np.float32)
                 ya = np.array(y, dtype=np.int32)    if y else np.empty(0, dtype=np.int32)
                 hdf.create_dataset(f"X_{split}", data=Xa, compression="gzip")
                 hdf.create_dataset(f"y_{split}", data=ya, compression="gzip")

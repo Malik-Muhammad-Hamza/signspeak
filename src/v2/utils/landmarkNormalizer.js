@@ -1,60 +1,124 @@
 /**
- * SignSpeak v2 — Landmark Normalizer
+ * SignSpeak v2 - Landmark Normalizer
  *
- * Converts raw MediaPipe Hands landmarks into a wrist-relative,
- * scale-invariant 63-element float vector suitable for TCN input.
+ * Converts MediaPipe Hands results into a two-hand, wrist-relative,
+ * scale-invariant 126-element float vector for TCN input.
  *
- * Input:  Array of 21 landmark objects  { x, y, z }
- *         (values are 0-1 image-space from MediaPipe)
- * Output: Float32Array of length 63 (21 × 3)
+ * Output order is stable:
+ *   [left_hand_63, right_hand_63]
  *
- * MUST stay bit-for-bit identical to:
- *   training/utils/normalizer.py → normalize_frame()
- *
- * Algorithm (mirrors Python exactly):
- *   1. Translate so wrist (landmark 0) is at origin.
- *   2. Scale so max(|value|) == 1.0  (uses 1e-6 guard, same as Python).
- *   3. Check all values finite after division.
- *   4. Flatten to [x0,y0,z0, x1,y1,z1, …, x20,y20,z20].
+ * Missing hands remain 63 zeros.
  */
 
 const NUM_LANDMARKS = 21;
-const FEATURE_SIZE  = NUM_LANDMARKS * 3; // 63
+const COORDS_PER_LANDMARK = 3;
+const HAND_FEATURE_SIZE = NUM_LANDMARKS * COORDS_PER_LANDMARK; // 63
+const FEATURE_SIZE = HAND_FEATURE_SIZE * 2; // 126
+
+function isFiniteLandmark(lm) {
+  return Number.isFinite(lm?.x) && Number.isFinite(lm?.y) && Number.isFinite(lm?.z);
+}
 
 /**
  * @param {Array<{x:number, y:number, z:number}>} landmarks
  * @returns {Float32Array|null}
  */
-export function normalizeLandmarks(landmarks) {
+export function normalizeHandLandmarks(landmarks) {
   if (!landmarks || landmarks.length !== NUM_LANDMARKS) return null;
+  if (!landmarks.every(isFiniteLandmark)) return null;
 
   const wrist = landmarks[0];
-  const raw   = new Float32Array(FEATURE_SIZE);
+  const raw = new Float32Array(HAND_FEATURE_SIZE);
 
-  // Step 1 — wrist-relative translation (mirrors Python: shifted = frame - wrist)
   for (let i = 0; i < NUM_LANDMARKS; i++) {
     raw[i * 3 + 0] = landmarks[i].x - wrist.x;
     raw[i * 3 + 1] = landmarks[i].y - wrist.y;
     raw[i * 3 + 2] = landmarks[i].z - wrist.z;
   }
 
-  // Step 2 — max-abs scale normalisation (mirrors Python: max_abs = np.abs(flat).max())
   let maxAbs = 0;
   for (const v of raw) {
     const a = Math.abs(v);
     if (a > maxAbs) maxAbs = a;
   }
 
-  // Step 3 — degenerate frame guard (mirrors Python: if max_abs < 1e-6: return None)
   if (maxAbs < 1e-6) return null;
 
   for (let i = 0; i < raw.length; i++) {
     raw[i] /= maxAbs;
-    // NaN/Inf guard (mirrors Python: if not np.all(np.isfinite(normed)): return None)
-    if (!isFinite(raw[i])) return null;
+    if (!Number.isFinite(raw[i])) return null;
   }
 
   return raw;
 }
 
-export { FEATURE_SIZE, NUM_LANDMARKS };
+function handednessLabel(entry) {
+  return entry?.label ?? entry?.classification?.[0]?.label ?? null;
+}
+
+function sortHandsByX(handLandmarks) {
+  return handLandmarks
+    .filter(Boolean)
+    .slice(0, 2)
+    .sort((a, b) => (a[0]?.x ?? 0) - (b[0]?.x ?? 0));
+}
+
+function assignHands(handLandmarks, handedness) {
+  const assigned = { left: null, right: null };
+  const labels = handedness?.map(handednessLabel) ?? [];
+  const hasUsableHandedness = labels.length >= handLandmarks.length
+    && labels.some(label => label === 'Left' || label === 'Right');
+
+  if (hasUsableHandedness) {
+    for (let i = 0; i < Math.min(handLandmarks.length, 2); i++) {
+      const label = labels[i];
+      if (label === 'Left' && !assigned.left) {
+        assigned.left = handLandmarks[i];
+      } else if (label === 'Right' && !assigned.right) {
+        assigned.right = handLandmarks[i];
+      }
+    }
+  }
+
+  const remaining = handLandmarks.filter(hand => hand && hand !== assigned.left && hand !== assigned.right);
+  const sortedRemaining = sortHandsByX(remaining);
+
+  for (const hand of sortedRemaining) {
+    if (!assigned.left) {
+      assigned.left = hand;
+    } else if (!assigned.right) {
+      assigned.right = hand;
+    }
+  }
+
+  return assigned;
+}
+
+/**
+ * @param {Array<Array<{x:number, y:number, z:number}>>} handLandmarks
+ * @param {Array<object>} handedness
+ * @returns {Float32Array|null}
+ */
+export function normalizeLandmarks(handLandmarks, handedness = []) {
+  if (!handLandmarks || handLandmarks.length === 0) return null;
+
+  const output = new Float32Array(FEATURE_SIZE);
+  const assigned = assignHands(handLandmarks, handedness);
+  let anyValid = false;
+
+  const left = normalizeHandLandmarks(assigned.left);
+  if (left) {
+    output.set(left, 0);
+    anyValid = true;
+  }
+
+  const right = normalizeHandLandmarks(assigned.right);
+  if (right) {
+    output.set(right, HAND_FEATURE_SIZE);
+    anyValid = true;
+  }
+
+  return anyValid ? output : null;
+}
+
+export { FEATURE_SIZE, HAND_FEATURE_SIZE, NUM_LANDMARKS };

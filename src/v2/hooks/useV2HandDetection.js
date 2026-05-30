@@ -15,18 +15,18 @@
  * ---------------
  * webcamRef       React ref from react-webcam (access via .current.video)
  * canvasRef       React ref to an optional debug <canvas>
- * onSequenceReady (sequenceFloat32Array) => void
+ * onSequenceReady (sequenceFloat32Array, handsDetectedCount) => void
  * onNoHand        () => void  — called once when landmarks disappear
  * frameCount      32 (default) — must match model training config
  * enabled         boolean — pause detection without unmounting
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { normalizeLandmarks } from '../utils/landmarkNormalizer';
 import { createFrameBuffer } from '../utils/frameBuffer';
 
 const DEFAULT_FRAME_COUNT = 32;
-const FEATURE_SIZE = 63;
+const FEATURE_SIZE = 126;
 
 // MediaPipe CDN — pinned version for reproducibility
 const MP_VERSION = '0.4.1646424915';
@@ -59,10 +59,11 @@ async function loadMediaPipeHands() {
  * @param {object} opts
  * @param {React.RefObject} opts.webcamRef     react-webcam ref (exposes .video)
  * @param {React.RefObject} [opts.canvasRef]   optional debug canvas
- * @param {function}        opts.onSequenceReady
+ * @param {function}        opts.onSequenceReady receives (sequenceFloat32Array, handsDetectedCount)
  * @param {function}        [opts.onNoHand]    called once when hand disappears
  * @param {number}          [opts.frameCount=32]
  * @param {boolean}         [opts.enabled=true]
+ * @returns {{ error: string|null, handsDetectedCount: number }}
  */
 export function useV2HandDetection({
   webcamRef,
@@ -78,6 +79,9 @@ export function useV2HandDetection({
   const runningRef   = useRef(false);
   // Track whether the previous frame had a hand — avoids firing onNoHand every frame
   const hadHandRef   = useRef(false);
+  const [error, setError] = useState(null);
+  const [handsDetectedCount, setHandsDetectedCount] = useState(0);
+  const handsDetectedCountRef = useRef(0);
 
   // Stable callback references — avoids restarting the detection loop
   const callbackRef  = useRef(onSequenceReady);
@@ -85,11 +89,22 @@ export function useV2HandDetection({
   useEffect(() => { callbackRef.current = onSequenceReady; }, [onSequenceReady]);
   useEffect(() => { noHandRef.current   = onNoHand;        }, [onNoHand]);
 
+  const updateHandsDetectedCount = useCallback((count) => {
+    const normalizedCount = Math.min(Math.max(count, 0), 2);
+    if (handsDetectedCountRef.current !== normalizedCount) {
+      handsDetectedCountRef.current = normalizedCount;
+      setHandsDetectedCount(normalizedCount);
+    }
+  }, []);
+
   // ── Result handler ──────────────────────────────────────────────────────────
   const handleResults = useCallback((results) => {
     if (!runningRef.current) return;
 
-    const landmarks = results?.multiHandLandmarks?.[0] ?? null;
+    const allLandmarks = results?.multiHandLandmarks ?? [];
+    const detectedCount = Math.min(allLandmarks.length, 2);
+    const landmarks = allLandmarks[0] ?? null;
+    updateHandsDetectedCount(detectedCount);
 
     if (!landmarks) {
       bufferRef.current.reset();
@@ -103,20 +118,20 @@ export function useV2HandDetection({
 
     hadHandRef.current = true;
 
-    const vector = normalizeLandmarks(landmarks);
+    const vector = normalizeLandmarks(allLandmarks, results?.multiHandedness ?? []);
     if (!vector) return;
 
     bufferRef.current.push(vector);
 
     if (bufferRef.current.isFull()) {
-      callbackRef.current?.(bufferRef.current.getSequence());
+      callbackRef.current?.(bufferRef.current.getSequence(), detectedCount);
     }
 
     // Optional landmark skeleton on debug canvas
     if (canvasRef?.current) {
       drawDebugCanvas(canvasRef.current, results);
     }
-  }, [canvasRef]);
+  }, [canvasRef, updateHandsDetectedCount]);
 
   // ── Detection loop ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -128,12 +143,13 @@ export function useV2HandDetection({
     loadMediaPipeHands()
       .then((Hands) => {
         if (cancelled) return;
+        setError(null);
 
         const hands = new Hands({
           locateFile: (file) => `${MP_BASE}/${file}`,
         });
         hands.setOptions({
-          maxNumHands: 1,
+          maxNumHands: 2,
           modelComplexity: 1,
           minDetectionConfidence: 0.7,
           minTrackingConfidence: 0.6,
@@ -161,6 +177,10 @@ export function useV2HandDetection({
       })
       .catch((err) => {
         console.error('[useV2HandDetection] MediaPipe load failed:', err);
+        if (!cancelled) {
+          const detail = err instanceof Error ? err.message : String(err);
+          setError(`MediaPipe Hands could not be loaded. ${detail}`);
+        }
       });
 
     // Capture ref values used in cleanup to avoid stale-ref warnings
@@ -173,9 +193,12 @@ export function useV2HandDetection({
       handsRef.current?.close?.();
       buffer.reset();
       hadHandRef.current = false;
+      updateHandsDetectedCount(0);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);   // handleResults is stable; webcamRef ref-object is stable
+
+  return { error, handsDetectedCount };
 }
 
 
@@ -184,27 +207,31 @@ function drawDebugCanvas(canvas, results) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const landmarks = results?.multiHandLandmarks?.[0];
-  if (!landmarks) return;
+  const hands = results?.multiHandLandmarks ?? [];
+  if (hands.length === 0) return;
 
   const connections = window.HAND_CONNECTIONS;
 
   if (connections) {
     ctx.strokeStyle = 'rgba(0,200,255,0.5)';
     ctx.lineWidth = 2;
-    for (const [s, e] of connections) {
-      const a = landmarks[s], b = landmarks[e];
-      ctx.beginPath();
-      ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
-      ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
-      ctx.stroke();
+    for (const landmarks of hands) {
+      for (const [s, e] of connections) {
+        const a = landmarks[s], b = landmarks[e];
+        ctx.beginPath();
+        ctx.moveTo(a.x * canvas.width, a.y * canvas.height);
+        ctx.lineTo(b.x * canvas.width, b.y * canvas.height);
+        ctx.stroke();
+      }
     }
   }
 
   ctx.fillStyle = '#00c8ff';
-  for (const lm of landmarks) {
-    ctx.beginPath();
-    ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3.5, 0, Math.PI * 2);
-    ctx.fill();
+  for (const landmarks of hands) {
+    for (const lm of landmarks) {
+      ctx.beginPath();
+      ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }

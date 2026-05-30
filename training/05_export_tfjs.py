@@ -69,6 +69,13 @@ def main():
 
     print(f"\nLoading model …")
     model = tf.keras.models.load_model(str(best_ckpt))
+    frame_count = int(cfg["preprocessing"]["frame_count"])
+    feature_size = int(cfg["preprocessing"]["feature_size"])
+    input_shape = tuple(model.inputs[0].shape[1:])
+    if input_shape != (frame_count, feature_size):
+        print(f"\nERROR: Model input shape mismatch. Expected {(frame_count, feature_size)}, got {input_shape}.")
+        print("Re-run training/03_train_tcn.py with the current two-hand config before exporting.")
+        sys.exit(1)
     model.summary(line_length=80)
 
     keras_causal_layers = [

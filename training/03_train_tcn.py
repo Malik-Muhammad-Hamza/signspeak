@@ -152,12 +152,19 @@ def main():
         y_val   = hf["y_val"][:]
 
     print(f"\nTrain: {X_train.shape},  Val: {X_val.shape}")
+    expected_shape = (frame_count, feature_size)
 
     if len(X_train) == 0:
         print("ERROR: X_train is empty. Re-run 02_build_dataset.py.")
         sys.exit(1)
     if len(X_val) == 0:
         print("ERROR: X_val is empty. Re-run 02_build_dataset.py.")
+        sys.exit(1)
+    if X_train.shape[1:] != expected_shape or X_val.shape[1:] != expected_shape:
+        print(f"ERROR: Dataset feature shape mismatch. Expected {expected_shape}.")
+        print(f"  X_train: {X_train.shape}")
+        print(f"  X_val  : {X_val.shape}")
+        print("Re-run 01_extract_landmarks.py and 02_build_dataset.py for the two-hand format.")
         sys.exit(1)
 
     # Num classes
@@ -269,6 +276,7 @@ def main():
 
     summary = {
         "dataset_mode":    "HF-ASL" if use_hf else "MS-ASL",
+        "input_shape":      [frame_count, feature_size],
         "num_classes":     num_classes,
         "train_samples":   int(len(X_train)),
         "val_samples":     int(len(X_val)),

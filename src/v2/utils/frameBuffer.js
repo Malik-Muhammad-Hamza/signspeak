@@ -7,18 +7,18 @@
  *
  * Usage
  * -----
- *   const buf = createFrameBuffer(32, 63);
+ *   const buf = createFrameBuffer(32, 126);
  *   buf.push(normalizedVector);
  *   if (buf.isFull()) {
- *     const tensor = buf.getTensor(); // shape [1, 32, 63]
+ *     const tensor = buf.getTensor(); // shape [1, 32, 126]
  *   }
  */
 
 /**
  * @param {number} capacity  Number of frames the model expects (e.g. 32)
- * @param {number} featureSize  Features per frame (e.g. 63)
+ * @param {number} featureSize  Features per frame (e.g. 126)
  */
-export function createFrameBuffer(capacity = 32, featureSize = 63) {
+export function createFrameBuffer(capacity = 32, featureSize = 126) {
   // Ring buffer backed by a flat Float32Array for zero-copy slice
   const data = new Float32Array(capacity * featureSize);
   let count = 0;

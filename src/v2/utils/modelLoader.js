@@ -23,6 +23,8 @@ const DEBUG_MEMORY = false;   // set true to log tf.memory() after each inferenc
 const base          = import.meta.env.BASE_URL || '/';
 const MODEL_URL     = `${base}v2/model/model.json`;
 const LABEL_MAP_URL = `${base}v2/model/label_map.json`;
+const FRAME_COUNT = 32;
+const FEATURE_SIZE = 126;
 
 let cachedModel    = null;
 let cachedLabelMap = null;
@@ -52,9 +54,14 @@ export async function loadV2Model() {
     throw new Error(`[V2 ModelLoader] Failed to load model: ${err.message ?? err}`, { cause: err });
   }
 
+  const inputShape = model.inputs[0].shape;
+  if (inputShape[1] !== FRAME_COUNT || inputShape[2] !== FEATURE_SIZE) {
+    throw new Error(`[V2 ModelLoader] Expected model input [1, ${FRAME_COUNT}, ${FEATURE_SIZE}], got ${JSON.stringify(inputShape)}`);
+  }
+
   // Warm-up inside tf.tidy to avoid leaking tensors
   tf.tidy(() => {
-    const warmup = tf.zeros([1, 32, 63]);
+    const warmup = tf.zeros([1, FRAME_COUNT, FEATURE_SIZE]);
     model.predict(warmup);
   });
 
@@ -80,7 +87,7 @@ export async function loadV2Model() {
  *
  * @param {tf.LayersModel}            model
  * @param {Object<string,string>}     labelMap   { "0": "HELLO", … }
- * @param {Float32Array}              sequence   Flat [32 * 63] typed array
+ * @param {Float32Array}              sequence   Flat [32 * 126] typed array
  *
  * @returns {Promise<{
  *   rawLabel: string,
@@ -92,7 +99,10 @@ export async function loadV2Model() {
 export async function runInference(model, labelMap, sequence) {
   // tf.tensor3d accepts a TypedArray directly — no Array.from copy needed.
   const numClasses = Object.keys(labelMap).length;
-  const input  = tf.tensor3d(sequence, [1, 32, 63]);
+  if (sequence.length !== FRAME_COUNT * FEATURE_SIZE) {
+    throw new Error(`[V2 ModelLoader] Expected sequence length ${FRAME_COUNT * FEATURE_SIZE}, got ${sequence.length}`);
+  }
+  const input  = tf.tensor3d(sequence, [1, FRAME_COUNT, FEATURE_SIZE]);
   let output   = null;
   let probs;
 

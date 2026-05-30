@@ -81,9 +81,21 @@ def main():
         print(f"\nERROR: X_test is empty. Re-run 02_build_dataset.py.")
         sys.exit(1)
 
+    frame_count = int(cfg["preprocessing"]["frame_count"])
+    feature_size = int(cfg["preprocessing"]["feature_size"])
+    if X_test.shape[1:] != (frame_count, feature_size):
+        print(f"\nERROR: X_test shape mismatch. Expected {(frame_count, feature_size)}, got {X_test.shape[1:]}.")
+        print("Re-run 01_extract_landmarks.py and 02_build_dataset.py for the two-hand format.")
+        sys.exit(1)
+
     print(f"X_test : {X_test.shape}")
     print("\nLoading model …")
     model = tf.keras.models.load_model(str(model_path))
+    model_shape = tuple(model.inputs[0].shape[1:])
+    if model_shape != (frame_count, feature_size):
+        print(f"\nERROR: Model input shape mismatch. Expected {(frame_count, feature_size)}, got {model_shape}.")
+        print("Re-run 03_train_tcn.py with the current config.")
+        sys.exit(1)
 
     print("Running inference …")
     y_pred_probs = model.predict(X_test, verbose=1)

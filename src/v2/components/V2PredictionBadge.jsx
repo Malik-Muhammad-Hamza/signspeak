@@ -26,9 +26,9 @@ export default function V2PredictionBadge({
 }) {
   if (error) {
     return (
-      <div style={styles.container}>
+      <div style={styles.container} title={typeof error === 'string' ? error : undefined}>
         <span style={styles.errorIcon}>⚠️</span>
-        <span style={styles.errorText}>v2 model error</span>
+        <span style={styles.errorText}>v2 pipeline error</span>
       </div>
     );
   }
@@ -44,6 +44,8 @@ export default function V2PredictionBadge({
 
   // ── Uncertain state (THANKYOU ↔ GOOD confused) ─────────────────────────────
   if (uncertain) {
+    const needsCorrection = uncertainMessage?.includes('choose correction');
+
     return (
       <div style={{ ...styles.container, ...styles.uncertainContainer }}>
         <span style={styles.uncertainIcon}>⚖️</span>
@@ -52,7 +54,9 @@ export default function V2PredictionBadge({
           {uncertainMessage && (
             <span style={styles.uncertainHint}>{uncertainMessage}</span>
           )}
-          <span style={styles.uncertainSub}>Hold sign more clearly</span>
+          <span style={styles.uncertainSub}>
+            {needsCorrection ? 'Select the intended word' : 'Hold sign more clearly'}
+          </span>
         </div>
       </div>
     );
@@ -87,12 +91,12 @@ const styles = {
     display: 'flex', alignItems: 'center', gap: '10px',
     padding: '8px 14px', borderRadius: '12px',
     background: 'rgba(255,255,255,0.06)',
-    border: '1px solid rgba(255,255,255,0.12)',
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.12)',
     backdropFilter: 'blur(8px)', fontSize: '14px', color: '#e0e0e0',
   },
   uncertainContainer: {
     background: 'rgba(240,180,41,0.12)',
-    border: '1px solid rgba(240,180,41,0.35)',
+    borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(240,180,41,0.35)',
   },
   uncertainIcon: { fontSize: 20 },
   uncertainText: {
