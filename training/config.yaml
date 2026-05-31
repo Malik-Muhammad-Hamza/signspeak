@@ -44,8 +44,8 @@ training:
   learning_rate: 1.0e-3
   lr_patience: 8
   early_stop_patience: 20
-  val_split: 0.10
-  test_split: 0.10
+  val_split: 0.15
+  test_split: 0.15
   seed: 42
   output_dir: "models/tcn_v2"
 
@@ -141,24 +141,24 @@ hf_dataset:
 # Enable these to improve generalisation for weak/low-data classes.
 # All defaults are conservative; enable one at a time and evaluate.
 augmentation:
-  enabled: true                 # master switch — set true to enable any augmentation
+  enabled: false                # master switch — set true to enable any augmentation
 
   # Landmark coordinate jitter: add Gaussian noise to each x/y/z coordinate.
   # Simulates slight signer-position variance. Recommended sigma: 0.01–0.03.
   landmark_jitter:
-    enabled: true
-    sigma: 0.015                # std-dev of Gaussian noise (in normalised units)
+    enabled: false
+    sigma: 0.01                 # std-dev of Gaussian noise (in normalised units)
     copies: 1                   # augmented copies to generate per sample
 
   # Temporal jitter: randomly drop/duplicate normalized frames to simulate speed variance.
   # Applied after the train/val/test split to avoid validation/test leakage.
   temporal_jitter:
-    enabled: true
-    max_speed_ratio: 1.15       # max temporal stretch/compress factor
+    enabled: false
+    max_speed_ratio: 1.10       # max temporal stretch/compress factor
     copies: 1
 
   # Horizontal flip (handedness normalisation): mirror x-coordinates.
   # Only safe if the dataset does not mix left/right hand signers for the same class.
   # Set enabled: true only after verifying your dataset is consistently right-hand.
   horizontal_flip:
-    enabled: true
+    enabled: false

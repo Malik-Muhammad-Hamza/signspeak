@@ -116,6 +116,52 @@ def compute_class_weights(y_train: np.ndarray, num_classes: int) -> dict[int, fl
     return weights
 
 
+def apply_class_weight_overrides(
+    base_weights: dict[int, float],
+    label_map: dict[str, str],
+    overrides: dict | None,
+) -> tuple[dict[int, float], dict[str, dict[str, float | int]], list[str]]:
+    """Apply optional config multipliers by class label."""
+    final_weights = dict(base_weights)
+    applied: dict[str, dict[str, float | int]] = {}
+    warnings: list[str] = []
+
+    if not overrides:
+        return final_weights, applied, warnings
+
+    label_to_id = {
+        str(label).strip().upper(): int(cls_id)
+        for cls_id, label in label_map.items()
+    }
+
+    for raw_label, raw_multiplier in overrides.items():
+        label = str(raw_label).strip().upper()
+        if label not in label_to_id:
+            warnings.append(f"Ignoring class_weight_overrides.{raw_label}: unknown class label")
+            continue
+
+        try:
+            multiplier = float(raw_multiplier)
+        except (TypeError, ValueError):
+            warnings.append(f"Ignoring class_weight_overrides.{raw_label}: multiplier is not numeric")
+            continue
+
+        if multiplier <= 0:
+            warnings.append(f"Ignoring class_weight_overrides.{raw_label}: multiplier must be > 0")
+            continue
+
+        cls_id = label_to_id[label]
+        final_weights[cls_id] = base_weights[cls_id] * multiplier
+        applied[label] = {
+            "class_id": cls_id,
+            "multiplier": multiplier,
+            "base_weight": base_weights[cls_id],
+            "final_weight": final_weights[cls_id],
+        }
+
+    return final_weights, applied, warnings
+
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main():
@@ -175,6 +221,7 @@ def main():
         print(f"Classes ({num_classes}): {list(label_map.values())}")
     else:
         num_classes = cfg["model"]["num_classes"]
+        label_map = {str(cls_id): str(cls_id) for cls_id in range(num_classes)}
 
     # Class distribution
     print("\nClass distribution in train:")
@@ -182,13 +229,24 @@ def main():
     for cls_id in range(num_classes):
         cnt = int((y_train == cls_id).sum())
         bar = "█" * max(1, cnt // 3)
-        lbl = label_map.get(str(cls_id), str(cls_id)) if (use_hf and label_map_path and label_map_path.exists()) else str(cls_id)
+        lbl = label_map.get(str(cls_id), str(cls_id))
         counts_str += f"  {lbl:<12} {cnt:>4}  {bar}\n"
     print(counts_str)
 
     # Class weights
-    class_weights = compute_class_weights(y_train, num_classes)
-    print(f"Class weights: { {k: round(v, 3) for k, v in class_weights.items()} }")
+    base_class_weights = compute_class_weights(y_train, num_classes)
+    class_weight_overrides = t_cfg.get("class_weight_overrides", {}) or {}
+    class_weights, applied_overrides, override_warnings = apply_class_weight_overrides(
+        base_class_weights,
+        label_map,
+        class_weight_overrides,
+    )
+    print(f"Base class weights: { {k: round(v, 3) for k, v in base_class_weights.items()} }")
+    if class_weight_overrides:
+        print(f"Class weight override multipliers: {class_weight_overrides}")
+    for warning in override_warnings:
+        print(f"WARNING: {warning}")
+    print(f"Final class weights: { {k: round(v, 3) for k, v in class_weights.items()} }")
     print()
 
     # Build model
@@ -285,6 +343,19 @@ def main():
         "best_val_accuracy":       round(best_val_acc,  4),
         "best_val_top2_accuracy":  round(best_val_top2, 4) if best_val_top2 else None,
         "best_train_accuracy":     round(best_train_acc, 4),
+        "base_class_weights": {str(k): round(v, 4) for k, v in base_class_weights.items()},
+        "class_weight_overrides": {
+            str(k): float(v) for k, v in class_weight_overrides.items()
+        },
+        "class_weight_override_details": {
+            label: {
+                "class_id": int(details["class_id"]),
+                "multiplier": round(float(details["multiplier"]), 4),
+                "base_weight": round(float(details["base_weight"]), 4),
+                "final_weight": round(float(details["final_weight"]), 4),
+            }
+            for label, details in applied_overrides.items()
+        },
         "class_weights":   {str(k): round(v, 4) for k, v in class_weights.items()},
     }
     with open(output_dir / "training_summary.json", "w") as f:
