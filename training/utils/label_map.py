@@ -78,7 +78,6 @@ def load_label_map(path: Path) -> dict[str, str]:
 
 if __name__ == "__main__":
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(description="Build or inspect the SignSpeak v2 label map")
     parser.add_argument("--list", action="store_true", help="Print class table and exit")

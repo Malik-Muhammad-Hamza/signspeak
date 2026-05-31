@@ -16,7 +16,6 @@ src/v2/
 ├── utils/
 │   ├── landmarkNormalizer.js
 │   ├── frameBuffer.js
-│   ├── predictionSmoother.js
 │   └── modelLoader.js
 └── README.md
 ```
@@ -33,8 +32,7 @@ Webcam
   -> UI output (V2PredictionBadge, transcript, TTS)
 ```
 
-`predictionSmoother.js` is not part of the live flow. The commit logic lives
-in `useV2Prediction.js`.
+The commit-stability logic lives entirely in `useV2Prediction.js`.
 
 ## No-Hand Reset
 

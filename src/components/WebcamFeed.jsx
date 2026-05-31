@@ -13,7 +13,7 @@ const WebcamFeed = ({ webcamRef, canvasRef, onMediaError }) => {
   return (
     <div
       className="relative w-full rounded-xl overflow-hidden border border-gray-700 bg-black shadow-lg"
-      style={{ paddingBottom: "75%" }} /* 4:3 aspect ratio */
+      style={{ paddingBottom: "75%" /* 4:3 aspect ratio */ }}
     >
       <Webcam
         ref={webcamRef}

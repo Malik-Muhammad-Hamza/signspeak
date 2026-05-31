@@ -27,6 +27,16 @@ const DISPLAY_LABELS = {
 };
 const toDisplayLabel = (label) => DISPLAY_LABELS[label] || label;
 
+// Spoken / sentence labels — clean natural-language words for TTS output.
+// Kept separate from DISPLAY_LABELS so slashes never leak into sentences.
+const SPOKEN_LABELS = {
+  ME: 'I',
+  THANKYOU: 'thank you',
+  FOOD: 'food',
+  BATHROOM: 'bathroom',
+};
+
+
 const SUPPORTED_SIGNS = [
   'Hello', 'Yes', 'No', 'Help', 'Thank You', 'Please', 'Sorry', 'Good', 'Stop', 'Water',
   'I / Me', 'You', 'Want', 'Need', 'Food / Eat', 'More', 'Bathroom', 'Home', 'Sick', 'Where',
@@ -43,8 +53,7 @@ const PHRASE_MAP = {
 };
 
 const toFallbackWord = (label) => {
-  if (label === 'ME') return 'I';
-  return toDisplayLabel(label).toLowerCase();
+  return SPOKEN_LABELS[label] ?? label.toLowerCase();
 };
 
 const buildSentence = (labels) => {

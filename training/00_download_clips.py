@@ -33,7 +33,6 @@ import csv
 import json
 import os
 import re
-import signal
 import subprocess
 import sys
 sys.stdout.reconfigure(encoding="utf-8")

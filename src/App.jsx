@@ -39,7 +39,8 @@ function App() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // Defer revocation so the browser can start the download before the URL expires
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   };
 

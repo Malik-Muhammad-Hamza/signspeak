@@ -10,7 +10,10 @@ data:
   dataset_path:   "C:/Web-Dev/Datasets/MS-ASL/processed/dataset.h5"
   label_map_out:  "C:/Web-Dev/Datasets/MS-ASL/processed/label_map.json"
 
-# ─── Selected classes ─────────────────────────────────────────────────────────
+# ─── Selected classes (LEGACY — MS-ASL pipeline only) ─────────────────────────
+# These classes are used ONLY by the old MS-ASL download/build path
+# (00_download_clips.py with hf_dataset.enabled: false).
+# The current v2 pipeline uses hf_dataset.selected_classes below instead.
 classes:
   - hello
   - "yes"
